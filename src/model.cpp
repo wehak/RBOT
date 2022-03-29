@@ -280,7 +280,10 @@ void Model::loadModel(const string modelFilename)
     Vec3f bbCenter = (rtf + lbn)/2;
     
     // compute a normalization transform that moves the object to the center of its bounding box and scales it according to the prescribed factor
-    T_n = Transformations::scaleMatrix(scaling)*Transformations::translationMatrix(-bbCenter[0], -bbCenter[1], -bbCenter[2]);
-    
+    // T_n = Transformations::scaleMatrix(scaling)*Transformations::translationMatrix(-bbCenter[0], -bbCenter[1], -bbCenter[2]);
     //T_n = Transformations::scaleMatrix(scaling);
+
+    // perform no transform to move the object to the center of bounding box
+    T_n = Matx44f::eye();
+
 }

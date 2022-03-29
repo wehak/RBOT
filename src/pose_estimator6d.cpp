@@ -34,6 +34,7 @@
  */
 
 #include "pose_estimator6d.h"
+#include "fiducial_pose/utility.h"
 
 using namespace std;
 using namespace cv;
@@ -88,6 +89,22 @@ PoseEstimator6D::~PoseEstimator6D()
     delete optimizationEngine;
     
     delete SDT2D;
+}
+
+void PoseEstimator6D::setModelPose(int objectIndex, cv::Matx44f T)
+{
+    for (int i=0 ; i<3 ; i++) {
+        T(i, 3) = T(i, 3) * 1000;
+    }
+    this->objects[objectIndex]->setPose(T);
+}
+
+void PoseEstimator6D::setModelInitialPose(int objectIndex, cv::Matx44f T)
+{
+    for (int i=0 ; i<3 ; i++) {
+        T(i, 3) = T(i, 3) * 1000;
+    }
+    this->objects[objectIndex]->setInitialPose(T);
 }
 
 

@@ -115,6 +115,23 @@ public:
      */
     void reset();
     
+    /**
+     * @brief Set the the pose of a model using a homogeneous transformation matrix T
+     * 
+     * @param modelID What model to affect
+     * @param T A 4x4 homogeneous transformation matrix
+     */
+    void setModelPose(int objectIndex, cv::Matx44f T);
+    
+    /**
+     * @brief Set the the initial pose of a model using a homogeneous transformation matrix T
+     * 
+     * @param modelID What model to affect
+     * @param T A 4x4 homogeneous transformation matrix
+     */
+    void setModelInitialPose(int objectIndex, cv::Matx44f T);
+
+    
 private:
     int width;
     int height;

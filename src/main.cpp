@@ -35,6 +35,7 @@
 
 #include <time.h>
 #include <bits/stdc++.h>
+#include <getopt.h>
 
 // log FPS
 #include <chrono>
@@ -50,6 +51,9 @@
 
 #include "object3d.h"
 #include "pose_estimator6d.h"
+
+#include "fiducial_pose/fiducial_pose_detect.h"
+#include "fiducial_pose/utility.h"
 
 using namespace std;
 using namespace cv;
@@ -88,20 +92,66 @@ cv::Mat drawResultOverlay(const vector<Object3D*>& objects, const cv::Mat& frame
     return result;
 }
 
-// double tempMean(double t) {
-//     ((t - 1) / t) * 
-// }
 
-// recording
-const bool record = true;
 
 int main(int argc, char *argv[])
 {
-    QApplication a(argc, argv);
+    // QApplication a(argc, argv);
+
+    // get arguments
+    string selectedModel;
+    if (argc > 1) {
+        int c;
+        while( (c = getopt(argc, argv, "hm:")) != -1) {
+            switch(c) {
+                case 'm':
+                    selectedModel = strdup(optarg);
+                    // cout << optarg;
+                    break;
+                case 'h':
+                    cout << "-m <model name>" << endl;
+                    abort();
+                default:
+                    cout << "-m <model name>" << endl;
+                    abort();
+            }
+        }
+    }
+    else {
+        cout << "No model selected. Use -m <model name>" << endl;
+        abort();
+    }
+
+
+    /*************
+    * PARAMETERS *
+    *************/
+
+    const string PosterMeasurementsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/other/aruco_boards/poster_tag_positions.json";
+    const string modelPositionFilepath = "/home/wehak/Dropbox/ACIT master/data/output/other/aruco_boards/poster_model_positions.json";
+    
+    const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/calibration/samsung_s20_h_1980x1080.json";
+    // read the camera properties
+    Matx33f intrinsics = getCameraIntrinsics(CameraMetricsFilepath);
+    Mat distortion = getCameraDistortion(CameraMetricsFilepath);
+
+    const bool record = true;
+    const bool undistortFrame = false;
+
+    float fiducialTagSize = 0.14; // [m]
+    Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::DICT_APRILTAG_16h5);
 
     // measure FPS
     const int nMeanSamples = 5;
     vector<std::chrono::duration<double>> t_iteration;
+
+    fiducialPoseDetector fiducial_detector(
+        CameraMetricsFilepath,
+        PosterMeasurementsFilepath,
+        modelPositionFilepath,
+        dictionary,
+        fiducialTagSize
+    );
 
     // camera image size
     // int width = 1138;
@@ -118,34 +168,34 @@ int main(int argc, char *argv[])
     // Matx33f K = Matx33f(893.6084327447165, 0.0, 579.7766602490716, 0.0, 895.7142289287846, 323.8682945945517, 0.0, 0.0, 1.0); // canon g5x video
     // Matx33f K = Matx33f(543.7763964666945, 0.0, 338.10640491567415, 0.0, 544.0291633358358, 222.64448193460834, 0.0, 0.0, 1.0); // dell xps webcam
     // Matx33f K = Matx33f(1742.846017065312, 0.0, 561.1918240669172, 0.0, 1747.3323386985453, 963.8549487863223, 0.0, 0.0, 1.0); // samsung s20 5g vertical
-    // Matx33f K = Matx33f(1780.8593020747785, 0.0, 921.4040583220925, 0.0, 1775.352467023823, 538.4276419433833, 0.0, 0.0, 1.0); // samsung s20 5g horizontal
-    Matx33f K = Matx33f(952.3526885892495, 0.0, 939.5077453607088, 0.0, 949.6063395088117, 526.5838186301586, 0.0, 0.0, 1.0); // blueeye rov
+    Matx33f K = Matx33f(1780.8593020747785, 0.0, 921.4040583220925, 0.0, 1775.352467023823, 538.4276419433833, 0.0, 0.0, 1.0); // samsung s20 5g horizontal
+    // Matx33f K = Matx33f(952.3526885892495, 0.0, 939.5077453607088, 0.0, 949.6063395088117, 526.5838186301586, 0.0, 0.0, 1.0); // blueeye rov
 
     // distortion coefficients (k1, k2, p1, p2)
     // Matx14f distCoeffs =  Matx14f(0.0, 0.0, 0.0, 0.0);
-    // Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
-    Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
+    Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
+    // Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
     
     // distances for the pose detection template generation
     vector<float> distances = {200.0f, 400.0f, 800.0f};
 
-    // 3d object pose
-    // Matx44f d_handle_pose = Matx44f(
-    //     -0.843924,  -0.534753,  -0.0427969,     0, 
-    //     -0.27178,   0.494962,   -0.825317,      0, 
-    //     0.462524,   -0.684873,  -0.563046,      0, 
-    //     0,          0,          0,              1
-    //     );
-    
     // load 3D objects
     vector<Object3D*> objects;
+    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/shackle.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
+    objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/fishtail handle v5.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
+    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
+    objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/small t-handle v2.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
+    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/rubber_ducky.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
+
+    enum models{ducky, t_handle, d_handle, fishtail, shackle};
+
     // objects.push_back(new Object3D("data/squirrel_demo_low.obj", 15, -35, 515, 55, -20, 205, 1.0, 0.55f, distances)); // sample rabbit
     // objects.push_back(new Object3D("data/Rubber_Duck.obj", -50, -100, 350, 90, 0, -90, 1.0, 1.0f, distances)); // video recording attempt
     // objects.push_back(new Object3D("data/Rubber_Duck.obj", 0, 0, 400, 90, 0, 0, 1.0, 0.55f, distances)); // live video 
     //objects.push_back(new Object3D("data/a_second_model.obj", -50, 0, 600, 30, 0, 180, 1.0, 0.55f, distances2));
     // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", -75, -80, 1651.49, 125, -2, -33, 1.0, 0.55f, distances));
     // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", -75, -80, 1651.49, 124.366, -2.45408, 147.714, 1.0, 0.55f, distances)); // transposed euler med invertert fortegn oceanlab air
-    objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", -180, -65, 858.752, 172.078, -43.9922, 88.8753, 1.0, 0.55f, distances)); // transposed euler med invertert fortegn blueeye
+    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", -180, -65, 858.752, 172.078, -43.9922, 88.8753, 1.0, 0.55f, distances)); // transposed euler med invertert fortegn blueeye
 
     // -64.4031, 13.5412, 1651.49 tvec
     // -124.366, 2.45408, -147.714 // transposed euler angles
@@ -168,8 +218,8 @@ int main(int argc, char *argv[])
 
     // initialize camera    
     Mat frame;
-    // VideoCapture cap("/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4");
-    VideoCapture cap("/home/wehak/Videos/master/input/blueeye/blue_eye_test.mp4");
+    VideoCapture cap("/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4");
+    // VideoCapture cap("/home/wehak/Videos/master/input/blueeye/blue_eye_test.mp4");
     // VideoCapture cap("/home/wehak/Videos/vid/vid/ducky_aruco_640.MP4");
     VideoWriter outputVideo("/home/wehak/Videos/master/output/rbot_pose_test.avi", VideoWriter::fourcc('M','J','P','G'), cap.get(CAP_PROP_FPS), Size(cap.get(CAP_PROP_FRAME_WIDTH), cap.get(CAP_PROP_FRAME_HEIGHT)));
     
@@ -196,18 +246,40 @@ int main(int argc, char *argv[])
             break;
         }
         
-        // the main pose uodate call
-        poseEstimator->estimatePoses(frame, false, true);
+        // get model poses from RBOT
+        poseEstimator->estimatePoses(frame, false, undistortFrame);
         
         cout << objects[0]->getPose() << endl;
         
         // render the models with the resulting pose estimates ontop of the input image
         Mat result = drawResultOverlay(objects, frame);
-        
+
+        // get model pose from fiducial
+        vector<Matx44d> Ts = fiducial_detector.getPoses(frame);
+
+        // draw poses on frame
+        if (Ts.size() > 0) {
+            // int i=0;
+            for (auto & T : Ts) {
+                Matx44f normT = matrixDot(objects[0]->getNormalization(), T);
+                aruco::drawAxis(
+                    result, 
+                    intrinsics,
+                    distortion,
+                    getRvecFromT(normT),
+                    getTvecFromT(normT),
+                    // getRvecFromT(T),
+                    // getTvecFromT(T),
+                    0.05
+                    );
+                break; // debug
+            }
+        }
+
         if(showHelp)
         {
-            putText(result, "Press '1' to initialize", Point(150, 250), FONT_HERSHEY_DUPLEX, 1.0, Scalar(255, 255, 255), 1);
-            putText(result, "or 'c' to quit", Point(205, 285), FONT_HERSHEY_DUPLEX, 1.0, Scalar(255, 255, 255), 1);
+            putText(result, "Press '1' to initialize", Point(150, 250), FONT_HERSHEY_DUPLEX, 1.0, Scalar(0, 255, 0), 1);
+            putText(result, "or 'c' to quit", Point(205, 285), FONT_HERSHEY_DUPLEX, 1.0, Scalar(0, 255, 0), 1);
         }
 
         // measure FPS
@@ -228,29 +300,41 @@ int main(int argc, char *argv[])
         int key = waitKey(timeout);
         
         // start/stop tracking the first object
-        if(key == (int)'1')
-        {
-            poseEstimator->toggleTracking(frame, 0, false);
-            poseEstimator->estimatePoses(frame, false, false);
+        if(key == (int)'1') {
+            poseEstimator->setModelInitialPose(0, Ts[0]);
+            poseEstimator->reset();
+
+            poseEstimator->toggleTracking(frame, 0, undistortFrame);
+            poseEstimator->estimatePoses(frame, false, undistortFrame);
+
             timeout = 1;
             showHelp = !showHelp;
         }
         if(key == (int)'2') // the same for a second object
         {
-            //poseEstimator->toggleTracking(frame, 1, false);
-            //poseEstimator->estimatePoses(frame, false, false);
+            //poseEstimator->toggleTracking(frame, 1, undistortFrame);
+            //poseEstimator->estimatePoses(frame, false, undistortFrame);
         }
+
         // reset the system to the initial state
-        if(key == (int)'r')
-            poseEstimator->reset();
+        if(key == (int)'r') poseEstimator->reset();
         // stop the demo
-        if(key == (int)'c')
-            break;
+        if(key == (int)'c') break;
+        // set pose from fiducal pose detector
+        if(key == (int)'f') {
+            poseEstimator->setModelPose(0, Ts[0]);
+            // poseEstimator->reset();
+            // timeout = 0;
+        }
+        // pause
+        if(key == (int)'p') timeout = 0;
 
         // recording
         if (record == true) {
             outputVideo.write(result);
         }
+
+        cout << "timeout: " << timeout << endl;
 
     }
     
