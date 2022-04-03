@@ -10,6 +10,19 @@
 
 using json = nlohmann::json;
 
+// print matrix to single line
+std::string printMatrixSingleLine(cv::Matx44f T) {
+    std::string matrix = "[";
+    for (int row=0 ; row<T.rows ; row++) {
+        for (int col=0 ; col<T.cols ; col++) {
+            if (row==0 && col==0) matrix = matrix + std::to_string(T(row, col));
+            else matrix = matrix + " " + std::to_string(T(row, col));
+        }
+    }
+    matrix += "]";
+    return matrix;
+}
+
 // overloaded
 void printMatrix(cv::Mat T) {
     for (int row=0 ; row<T.rows ; row++) {
@@ -185,7 +198,6 @@ std::vector<std::string> getModelNames(std::string filepath) {
 }
 
 std::map<std::string, cv::Matx44d> getModelPositions(std::string filepath) {
-    std::cout << "Reading poster model positions... ";
     std::ifstream inputData(filepath);
     
     // create json reader
@@ -209,14 +221,12 @@ std::map<std::string, cv::Matx44d> getModelPositions(std::string filepath) {
     }
 
     // return map
-    std::cout << "done";
     return data;
     
 
 }
 
 std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath) {
-    std::cout << "Reading poster measurements... ";
     // convert string to input stream class
     std::ifstream inputData(filepath);
 
@@ -257,7 +267,6 @@ std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath) 
         result.push_back(pair);
     }
 
-    std::cout << "done\n" ;
     return result;
 }
 

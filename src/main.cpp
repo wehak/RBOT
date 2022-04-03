@@ -96,32 +96,7 @@ cv::Mat drawResultOverlay(const vector<Object3D*>& objects, const cv::Mat& frame
 
 int main(int argc, char *argv[])
 {
-    // QApplication a(argc, argv);
-
-    // get arguments
-    string selectedModel;
-    if (argc > 1) {
-        int c;
-        while( (c = getopt(argc, argv, "hm:")) != -1) {
-            switch(c) {
-                case 'm':
-                    selectedModel = strdup(optarg);
-                    // cout << optarg;
-                    break;
-                case 'h':
-                    cout << "-m <model name>" << endl;
-                    abort();
-                default:
-                    cout << "-m <model name>" << endl;
-                    abort();
-            }
-        }
-    }
-    else {
-        cout << "No model selected. Use -m <model name>" << endl;
-        abort();
-    }
-
+    QApplication a(argc, argv);
 
     /*************
     * PARAMETERS *
@@ -153,6 +128,30 @@ int main(int argc, char *argv[])
         fiducialTagSize
     );
 
+    // get arguments
+    string selectedModel;
+    if (argc > 2) {
+        int c;
+        while( (c = getopt(argc, argv, "hm:")) != -1) {
+            switch(c) {
+                case 'm':
+                    selectedModel = strdup(optarg);
+                    // cout << optarg;
+                    break;
+                case 'h':
+                    cout << "-m <model name>" << endl;
+                    abort();
+                default:
+                    cout << "-m <model name>" << endl;
+                    abort();
+            }
+        }
+    }
+    else {
+        cout << "Error: No model selected. Use -m <model name>.\nAvailable models: "<< fiducial_detector.printModelNames() << endl;
+        abort();
+    }
+
     // camera image size
     // int width = 1138;
     // int height = 640;
@@ -181,27 +180,9 @@ int main(int argc, char *argv[])
 
     // load 3D objects
     vector<Object3D*> objects;
-    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/shackle.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
-    objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/fishtail handle v5.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
-    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
-    objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/small t-handle v2.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
-    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/rubber_ducky.obj", 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
-
-    enum models{ducky, t_handle, d_handle, fishtail, shackle};
-
-    // objects.push_back(new Object3D("data/squirrel_demo_low.obj", 15, -35, 515, 55, -20, 205, 1.0, 0.55f, distances)); // sample rabbit
-    // objects.push_back(new Object3D("data/Rubber_Duck.obj", -50, -100, 350, 90, 0, -90, 1.0, 1.0f, distances)); // video recording attempt
-    // objects.push_back(new Object3D("data/Rubber_Duck.obj", 0, 0, 400, 90, 0, 0, 1.0, 0.55f, distances)); // live video 
-    //objects.push_back(new Object3D("data/a_second_model.obj", -50, 0, 600, 30, 0, 180, 1.0, 0.55f, distances2));
-    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", -75, -80, 1651.49, 125, -2, -33, 1.0, 0.55f, distances));
-    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", -75, -80, 1651.49, 124.366, -2.45408, 147.714, 1.0, 0.55f, distances)); // transposed euler med invertert fortegn oceanlab air
-    // objects.push_back(new Object3D("/home/wehak/Dropbox/ACIT master/data/models/d-handle v6.obj", -180, -65, 858.752, 172.078, -43.9922, 88.8753, 1.0, 0.55f, distances)); // transposed euler med invertert fortegn blueeye
-
-    // -64.4031, 13.5412, 1651.49 tvec
-    // -124.366, 2.45408, -147.714 // transposed euler angles
-    // -129.561, -27.6167, -162.303 // euler angles
-    // 39.0238, -140.409, 73.07 // straight rvec to degrees
-    // -79.9114, -43.6265, 858.752, 135.987, -7.19984, -89.1967, 
+    string selectedModelPath = "data/" + selectedModel + ".obj";
+    cout << "Reading: " << selectedModelPath << endl;
+    objects.push_back(new Object3D(selectedModelPath, 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
     
     // create the pose estimator
     PoseEstimator6D* poseEstimator = new PoseEstimator6D(width, height, zNear, zFar, K, distCoeffs, objects);
@@ -234,6 +215,9 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    // record measurements
+    vector< vector<string> > measurements;
+
     while(true)
     {
         auto tStart = std::chrono::high_resolution_clock::now();
@@ -249,32 +233,23 @@ int main(int argc, char *argv[])
         // get model poses from RBOT
         poseEstimator->estimatePoses(frame, false, undistortFrame);
         
-        cout << objects[0]->getPose() << endl;
-        
+        // cout << objects[0]->getPose() << endl;
+        cout << printMatrixSingleLine(objects[0]->getPose()) << endl;        
         // render the models with the resulting pose estimates ontop of the input image
         Mat result = drawResultOverlay(objects, frame);
 
         // get model pose from fiducial
-        vector<Matx44d> Ts = fiducial_detector.getPoses(frame);
+        Matx44d T = fiducial_detector.getPoseModel(frame, selectedModel);
 
         // draw poses on frame
-        if (Ts.size() > 0) {
-            // int i=0;
-            for (auto & T : Ts) {
-                Matx44f normT = matrixDot(objects[0]->getNormalization(), T);
-                aruco::drawAxis(
-                    result, 
-                    intrinsics,
-                    distortion,
-                    getRvecFromT(normT),
-                    getTvecFromT(normT),
-                    // getRvecFromT(T),
-                    // getTvecFromT(T),
-                    0.05
-                    );
-                break; // debug
-            }
-        }
+        aruco::drawAxis(
+            result, 
+            intrinsics,
+            distortion,
+            getRvecFromT(T),
+            getTvecFromT(T),
+            0.05
+            );
 
         if(showHelp)
         {
@@ -295,13 +270,15 @@ int main(int argc, char *argv[])
         auto FPS = 1.0 / ((1.0 / nMeanSamples) * sum.count());
         putText(result, to_string((int)round(FPS)), Point(10, 30), FONT_HERSHEY_DUPLEX, 1.0, Scalar(0, 255, 0), 1);
 
+        measurements.push_back(vector<string>{to_string(diff.count()), printMatrixSingleLine(T), printMatrixSingleLine(objects[0]->getPose())});
+
         imshow("result", result);
         
         int key = waitKey(timeout);
         
         // start/stop tracking the first object
         if(key == (int)'1') {
-            poseEstimator->setModelInitialPose(0, Ts[0]);
+            poseEstimator->setModelInitialPose(0, T);
             poseEstimator->reset();
 
             poseEstimator->toggleTracking(frame, 0, undistortFrame);
@@ -322,7 +299,7 @@ int main(int argc, char *argv[])
         if(key == (int)'c') break;
         // set pose from fiducal pose detector
         if(key == (int)'f') {
-            poseEstimator->setModelPose(0, Ts[0]);
+            poseEstimator->setModelPose(0, T);
             // poseEstimator->reset();
             // timeout = 0;
         }
@@ -333,9 +310,6 @@ int main(int argc, char *argv[])
         if (record == true) {
             outputVideo.write(result);
         }
-
-        cout << "timeout: " << timeout << endl;
-
     }
     
     // deactivate the offscreen rendering OpenGL context
@@ -353,11 +327,26 @@ int main(int argc, char *argv[])
     delete poseEstimator;
 
     // write FPS data to file
+    // ofstream log;
+    // log.open("data/fps_log.txt");
+    // if (log.is_open()) {
+    //     for (auto n : t_iteration) {
+    //         log << n.count() << ",";
+    //     }
+    // }
+    // log.close();
+
+    // write measurements data to file
     ofstream log;
-    log.open("data/fps_log.txt");
+    string output_filename = "./data/measurement_log_" + selectedModel + ".txt";
+    // log.open("./data/measurement_log.txt");
+    log.open(output_filename);
     if (log.is_open()) {
-        for (auto n : t_iteration) {
-            log << n.count() << ",";
+        for (auto& line : measurements) {
+            for (auto& col : line) {
+                log << col << ";";
+            }
+            log << "\n";
         }
     }
     log.close();

@@ -39,7 +39,9 @@ class fiducialPoseDetector {
 
         // methods
         vector<Matx44d> getPoses(Mat frame);
-        Matx44d averageMatrix(vector<Matx44d>);
+        Matx44f         getPoseModel(Mat frame, string modelName);
+        Matx44d         averageMatrix(vector<Matx44d>);
+        string          printModelNames();
 
 };
 
