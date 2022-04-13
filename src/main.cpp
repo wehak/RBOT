@@ -101,16 +101,17 @@ int main(int argc, char *argv[])
     /*************
     * PARAMETERS *
     *************/
-
+   
     const string PosterMeasurementsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/other/aruco_boards/poster_tag_positions.json";
     const string modelPositionFilepath = "/home/wehak/Dropbox/ACIT master/data/output/other/aruco_boards/poster_model_positions.json";
     
+    // const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/calibration/blueeye_air.json";
     const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/calibration/samsung_s20_h_1980x1080.json";
     // read the camera properties
     Matx33f intrinsics = getCameraIntrinsics(CameraMetricsFilepath);
     Mat distortion = getCameraDistortion(CameraMetricsFilepath);
 
-    const bool record = true;
+    const bool record = false;
     const bool undistortFrame = false;
 
     float fiducialTagSize = 0.14; // [m]
@@ -167,13 +168,13 @@ int main(int argc, char *argv[])
     // Matx33f K = Matx33f(893.6084327447165, 0.0, 579.7766602490716, 0.0, 895.7142289287846, 323.8682945945517, 0.0, 0.0, 1.0); // canon g5x video
     // Matx33f K = Matx33f(543.7763964666945, 0.0, 338.10640491567415, 0.0, 544.0291633358358, 222.64448193460834, 0.0, 0.0, 1.0); // dell xps webcam
     // Matx33f K = Matx33f(1742.846017065312, 0.0, 561.1918240669172, 0.0, 1747.3323386985453, 963.8549487863223, 0.0, 0.0, 1.0); // samsung s20 5g vertical
-    Matx33f K = Matx33f(1780.8593020747785, 0.0, 921.4040583220925, 0.0, 1775.352467023823, 538.4276419433833, 0.0, 0.0, 1.0); // samsung s20 5g horizontal
+    // Matx33f K = Matx33f(1780.8593020747785, 0.0, 921.4040583220925, 0.0, 1775.352467023823, 538.4276419433833, 0.0, 0.0, 1.0); // samsung s20 5g horizontal
     // Matx33f K = Matx33f(952.3526885892495, 0.0, 939.5077453607088, 0.0, 949.6063395088117, 526.5838186301586, 0.0, 0.0, 1.0); // blueeye rov
 
     // distortion coefficients (k1, k2, p1, p2)
     // Matx14f distCoeffs =  Matx14f(0.0, 0.0, 0.0, 0.0);
-    Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
-    // Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
+    // Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
+    Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
     
     // distances for the pose detection template generation
     vector<float> distances = {200.0f, 400.0f, 800.0f};
@@ -185,7 +186,14 @@ int main(int argc, char *argv[])
     objects.push_back(new Object3D(selectedModelPath, 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
     
     // create the pose estimator
-    PoseEstimator6D* poseEstimator = new PoseEstimator6D(width, height, zNear, zFar, K, distCoeffs, objects);
+    PoseEstimator6D* poseEstimator = new PoseEstimator6D(
+        width, height,
+        zNear, zFar, 
+        fiducial_detector.intrinsics, 
+        distCoeffs, 
+        objects
+        );
+    // PoseEstimator6D* poseEstimator = new PoseEstimator6D(width, height, zNear, zFar, K, distCoeffs, objects);
     
     // move the OpenGL context for offscreen rendering to the current thread, if run in a seperate QT worker thread (unnessary in this example)
     //RenderingEngine::Instance()->getContext()->moveToThread(this);
@@ -199,8 +207,8 @@ int main(int argc, char *argv[])
 
     // initialize camera    
     Mat frame;
-    VideoCapture cap("/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4");
-    // VideoCapture cap("/home/wehak/Videos/master/input/blueeye/blue_eye_test.mp4");
+    // VideoCapture cap("/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4");
+    VideoCapture cap("/home/wehak/Videos/master/input/blueeye/blue_eye_test.mp4");
     // VideoCapture cap("/home/wehak/Videos/vid/vid/ducky_aruco_640.MP4");
     VideoWriter outputVideo("/home/wehak/Videos/master/output/rbot_pose_test.avi", VideoWriter::fourcc('M','J','P','G'), cap.get(CAP_PROP_FPS), Size(cap.get(CAP_PROP_FRAME_WIDTH), cap.get(CAP_PROP_FRAME_HEIGHT)));
     
