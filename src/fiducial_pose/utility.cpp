@@ -309,7 +309,7 @@ cv::Mat getCameraDistortion(std::string filepath) {
     }
 
     // write the array to a opencv mat object
-    cv::Mat distortion(5, 1, CV_64F, data);
+    cv::Mat distortion(5, 1, CV_32F, data);
     return distortion;
 
 }

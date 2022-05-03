@@ -83,9 +83,9 @@ cv::Mat drawResultOverlay(const vector<Object3D*>& objects, const cv::Mat& frame
             Vec3b color = rendering.at<Vec3b>(y,x);
             if(depth.at<float>(y,x) != 0.0f)
             {
-                result.at<Vec3b>(y,x)[0] = color[2];
-                result.at<Vec3b>(y,x)[1] = color[1];
-                result.at<Vec3b>(y,x)[2] = color[0];
+                result.at<Vec3b>(y,x)[0] = (color[2] + frame.at<Vec3b>(y,x)[0] * 2) / 3;
+                result.at<Vec3b>(y,x)[1] = (color[1] + frame.at<Vec3b>(y,x)[1] * 2) / 3;
+                result.at<Vec3b>(y,x)[2] = (color[0] + frame.at<Vec3b>(y,x)[2] * 2) / 3;
             }
         }
     }
@@ -102,14 +102,26 @@ int main(int argc, char *argv[])
     * PARAMETERS *
     *************/
    
-    const string PosterMeasurementsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/other/aruco_boards/poster_tag_positions.json";
-    const string modelPositionFilepath = "/home/wehak/Dropbox/ACIT master/data/output/other/aruco_boards/poster_model_positions.json";
+    const string PosterMeasurementsFilepath = "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_tag_positions.json";
+    const string modelPositionFilepath = "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_model_positions.json";
     
     // const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/calibration/blueeye_air.json";
-    const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/calibration/samsung_s20_h_1980x1080.json";
+    const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/cam_calibration_json/blueye_tank_1080.json";
+
+    const int MIN_FIDUCIALS = 2;
+
+
+    /************
+    *  PROGRAM  *
+    ************/
+
     // read the camera properties
     Matx33f intrinsics = getCameraIntrinsics(CameraMetricsFilepath);
     Mat distortion = getCameraDistortion(CameraMetricsFilepath);
+    Matx14f distCoeffs;
+    for (int i=0 ; i<4 ; i++) {
+        distCoeffs(i) = distortion.at<float>(i, 0);
+    }
 
     const bool record = false;
     const bool undistortFrame = false;
@@ -174,7 +186,7 @@ int main(int argc, char *argv[])
     // distortion coefficients (k1, k2, p1, p2)
     // Matx14f distCoeffs =  Matx14f(0.0, 0.0, 0.0, 0.0);
     // Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
-    Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
+    // Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
     
     // distances for the pose detection template generation
     vector<float> distances = {200.0f, 400.0f, 800.0f};
@@ -189,7 +201,8 @@ int main(int argc, char *argv[])
     PoseEstimator6D* poseEstimator = new PoseEstimator6D(
         width, height,
         zNear, zFar, 
-        fiducial_detector.intrinsics, 
+        intrinsics, 
+        // fiducial_detector.intrinsics, 
         distCoeffs, 
         objects
         );
@@ -208,7 +221,7 @@ int main(int argc, char *argv[])
     // initialize camera    
     Mat frame;
     // VideoCapture cap("/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4");
-    VideoCapture cap("/home/wehak/Videos/master/input/blueeye/blue_eye_test.mp4");
+    VideoCapture cap("/media/wehak/OS/Users/hweyd/Documents/My Videos/oceanlab_video/dataset/test_1_3.mp4");
     // VideoCapture cap("/home/wehak/Videos/vid/vid/ducky_aruco_640.MP4");
     VideoWriter outputVideo("/home/wehak/Videos/master/output/rbot_pose_test.avi", VideoWriter::fourcc('M','J','P','G'), cap.get(CAP_PROP_FPS), Size(cap.get(CAP_PROP_FRAME_WIDTH), cap.get(CAP_PROP_FRAME_HEIGHT)));
     
@@ -238,26 +251,40 @@ int main(int argc, char *argv[])
             break;
         }
         
+        // get model pose from fiducial
+        fiducialPose pose = fiducial_detector.getCleanModelPose(frame, selectedModel, 2, MIN_FIDUCIALS);
+
         // get model poses from RBOT
-        poseEstimator->estimatePoses(frame, false, undistortFrame);
+        poseEstimator->estimatePoses(frame, undistortFrame, true);
         
         // cout << objects[0]->getPose() << endl;
         cout << printMatrixSingleLine(objects[0]->getPose()) << endl;        
         // render the models with the resulting pose estimates ontop of the input image
         Mat result = drawResultOverlay(objects, frame);
 
-        // get model pose from fiducial
-        Matx44d T = fiducial_detector.getPoseModel(frame, selectedModel);
 
         // draw poses on frame
-        aruco::drawAxis(
-            result, 
-            intrinsics,
-            distortion,
-            getRvecFromT(T),
-            getTvecFromT(T),
-            0.05
-            );
+        // aruco::drawAxis(
+        //     result, 
+        //     intrinsics,
+        //     distortion,
+        //     getRvecFromT(objects[0]->getPose()),
+        //     getTvecFromT(objects[0]->getPose()),
+        //     0.05
+        //     );
+
+
+        if (pose.n_fiducials >= MIN_FIDUCIALS) {
+            // draw poses on frame
+            aruco::drawAxis(
+                result, 
+                intrinsics,
+                distortion,
+                getRvecFromT(pose.T),
+                getTvecFromT(pose.T),
+                0.10
+                );
+        }
 
         if(showHelp)
         {
@@ -278,7 +305,7 @@ int main(int argc, char *argv[])
         auto FPS = 1.0 / ((1.0 / nMeanSamples) * sum.count());
         putText(result, to_string((int)round(FPS)), Point(10, 30), FONT_HERSHEY_DUPLEX, 1.0, Scalar(0, 255, 0), 1);
 
-        measurements.push_back(vector<string>{to_string(diff.count()), printMatrixSingleLine(T), printMatrixSingleLine(objects[0]->getPose())});
+        measurements.push_back(vector<string>{to_string(diff.count()), to_string(pose.n_fiducials), printMatrixSingleLine(pose.T), printMatrixSingleLine(objects[0]->getPose())});
 
         imshow("result", result);
         
@@ -286,7 +313,7 @@ int main(int argc, char *argv[])
         
         // start/stop tracking the first object
         if(key == (int)'1') {
-            poseEstimator->setModelInitialPose(0, T);
+            poseEstimator->setModelInitialPose(0, pose.T);
             poseEstimator->reset();
 
             poseEstimator->toggleTracking(frame, 0, undistortFrame);
@@ -307,7 +334,7 @@ int main(int argc, char *argv[])
         if(key == (int)'c') break;
         // set pose from fiducal pose detector
         if(key == (int)'f') {
-            poseEstimator->setModelPose(0, T);
+            poseEstimator->setModelPose(0, pose.T);
             // poseEstimator->reset();
             // timeout = 0;
         }

@@ -12,6 +12,11 @@
 using namespace std;
 using namespace cv;
 
+struct fiducialPose {
+    int n_fiducials;
+    Matx44f T; 
+};
+
 class fiducialPoseDetector {
     public:
         fiducialPoseDetector(
@@ -38,11 +43,14 @@ class fiducialPoseDetector {
         array< Matx44d, 12 > T_to;
 
         // methods
-        vector<Matx44d> getPoses(Mat frame);
-        Matx44f         getPoseModel(Mat frame, string modelName);
-        Matx44d         averageMatrix(vector<Matx44d>);
-        string          printModelNames();
+        map<int, Matx44f>   getFiducialPoses(Mat frame);
+        map<int, Matx44f>   getRawModelPoses(Mat frame, string modelName);
+        fiducialPose        getCleanModelPose(Mat frame, string modelName, float outlier_coef, int min_tags);
+        // pair<int, Matx44f>  getCleanModelPose(Mat frame, string modelName, float outlier_coef, int min_tags);
+        // Matx44d             averageMatrix(vector<Matx44d>);
+        string              printModelNames();
 
 };
+
 
 #endif
