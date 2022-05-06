@@ -4,6 +4,7 @@
 using namespace std;
 using namespace cv;
 
+// constructor
 fiducialPoseDetector::fiducialPoseDetector(
     string CameraMetricsFilepath,
     string PosterMeasurementsFilepath,
@@ -16,7 +17,6 @@ fiducialPoseDetector::fiducialPoseDetector(
     // read the camera properties
     intrinsics = getCameraIntrinsics(CameraMetricsFilepath);
     distortion = getCameraDistortion(CameraMetricsFilepath);
-    printMatrix(intrinsics);
 
     // create homogeneous transformation matrices linking every tag to the center of the poster
     posterMeasurements = getPosterMeasurements(PosterMeasurementsFilepath);
@@ -29,6 +29,7 @@ fiducialPoseDetector::fiducialPoseDetector(
     int i=0;
     for (auto& element : posterMeasurements) {
         T_to[i] = getTagToCenterT(element);
+        // printMatrix(T_to[i]);
         i++;
     }
 
@@ -36,6 +37,8 @@ fiducialPoseDetector::fiducialPoseDetector(
     dict = dictionary;
 }
 
+
+// get the pose of all fiducial tags
 map<int, Matx44f> fiducialPoseDetector::getFiducialPoses(Mat frame) {
     // declare variables
     vector<int> ids;
@@ -80,6 +83,7 @@ map<int, Matx44f> fiducialPoseDetector::getFiducialPoses(Mat frame) {
 }
 
 
+// return the poses of a model, transformed from each fiducial tag
 map<int, Matx44f> fiducialPoseDetector::getRawModelPoses(Mat frame, string modelName) {
     // declare variables
     vector<int> ids;
@@ -125,14 +129,16 @@ map<int, Matx44f> fiducialPoseDetector::getRawModelPoses(Mat frame, string model
 
 }
 
-fiducialPose fiducialPoseDetector::getCleanModelPose(Mat frame, string modelName, float outlier_coef=2, int min_tags=1) {
+
+// return the pose of a model, with outliers removed
+fiducialPose fiducialPoseDetector::getCleanModelPose(Mat frame, string modelName, float tvec_outlier_coef=2, int min_tags=1) {
     // declare variables
     fiducialPose pose;
-    vector<int> ids;
-    vector< vector<Point2f> > corners;
     map<int, Matx44f> poses;
 
     // detect pose
+    vector<int> ids;
+    vector< vector<Point2f> > corners;
     aruco::detectMarkers(frame, dict, corners, ids);
 
     // if any markers are detected
@@ -158,88 +164,111 @@ fiducialPose fiducialPoseDetector::getCleanModelPose(Mat frame, string modelName
 
             // transform pose for center to model and save with the tag ID
             poses[ids[i]] = matrixDot(T_co, T_om[modelName]);
+
+
+            // aruco::drawAxis(
+            //     frame, 
+            //     intrinsics,
+            //     distortion,
+            //     getRvecFromT(poses[ids[i]]),
+            //     getTvecFromT(poses[ids[i]]),
+            //     0.03
+            //     );
         }
 
         // declare variables necessary to perform outlier detection
-        vector<Vec3d> rvecs;
         vector<Vec3d> tvecs;
-        vector<Vec3d> inlier_rvecs;
         vector<Vec3d> inlier_tvecs;
-        vector<Vec3d> outlier_rvecs;
         vector<Vec3d> outlier_tvecs;
-        Vec3d rvec_avg;
         Vec3d tvec_avg;
-        Vec3d rvec_stdDev;
         Vec3d tvec_stdDev;
-        Vec3d inlier_avg_rvec;
         Vec3d inlier_avg_tvec;
+
+        // vector<Eigen::Quaterniond> quats;
+        vector<Eigen::Vector4d> quats;
+        vector<Eigen::Vector4d> inlier_quats;
+        vector<Eigen::Vector4d> outlier_quats;
+        // Eigen::Vector4d quat_stdDev;
+
+
 
         // create vector with rotation and translation vectors
         for (const auto& pose : poses) {
             // append pose to vector
-            rvecs.push_back(getRvecFromT(pose.second)); 
             tvecs.push_back(getTvecFromT(pose.second)); 
 
             // add value to calculate average
-            rvec_avg += rvecs.back();
             tvec_avg += tvecs.back();
+
+            Eigen::Quaterniond q = rvec2quat( getRvecFromT(pose.second) );
+            Eigen::Vector4d v = quat2vec(q);
+            quats.push_back(v);
         }
 
+        Eigen::Vector4d quat_avg(averageQuaternions(quats));
+
         // calculate average
-        rvec_avg = rvec_avg / float(rvecs.size());
         tvec_avg = tvec_avg / float(tvecs.size());
 
-        // calculate standard deviation
-        for (int i=0 ; i<rvecs.size() ; i++) {
-            rvec_stdDev[0] += pow(rvecs[i][0] - rvec_avg[0], 2);
-            rvec_stdDev[1] += pow(rvecs[i][1] - rvec_avg[1], 2);
-            rvec_stdDev[2] += pow(rvecs[i][2] - rvec_avg[2], 2);
-
+        // calculate standard deviation by squaring the difference from average
+        for (int i=0 ; i<tvecs.size() ; i++) {
             tvec_stdDev[0] += pow(tvecs[i][0] - tvec_avg[0], 2);
             tvec_stdDev[1] += pow(tvecs[i][1] - tvec_avg[1], 2);
             tvec_stdDev[2] += pow(tvecs[i][2] - tvec_avg[2], 2);
+
+            // quat_stdDev = (quats[i] - quat_avg).array().pow(2);
         }
 
-        rvec_stdDev[0] = sqrt(rvec_stdDev[0] / rvecs.size());
-        rvec_stdDev[1] = sqrt(rvec_stdDev[1] / rvecs.size());
-        rvec_stdDev[2] = sqrt(rvec_stdDev[2] / rvecs.size());
+        // and divide the sum by the number of samples, then square root
         tvec_stdDev[0] = sqrt(tvec_stdDev[0] / tvecs.size());
         tvec_stdDev[1] = sqrt(tvec_stdDev[1] / tvecs.size());
         tvec_stdDev[2] = sqrt(tvec_stdDev[2] / tvecs.size());
 
+        // quat_stdDev = (quat_stdDev / quats.size()).array().sqrt();
+
         // remove outliers that deviate from the average by x standard deviations
-        for (int i=0 ; i<rvecs.size() ; i++) {
+        for (int i=0 ; i<tvecs.size() ; i++) {
             bool outlier = false;
             for (int j=0 ; j<3 ; j++) {
-                if ((abs(rvecs[i][j] - rvec_avg[j]) > rvec_stdDev[j] * outlier_coef) || (abs(tvecs[i][j] - tvec_avg[j]) > tvec_stdDev[j] * outlier_coef)) {
+                // check tvec
+                if (abs(tvecs[i][j] - tvec_avg[j]) > tvec_stdDev[j] * tvec_outlier_coef) {
                     outlier = true;
                 }
             }
 
             // sort outliers and inliers
             if (!outlier) {
-                inlier_rvecs.push_back(rvecs[i]);
                 inlier_tvecs.push_back(tvecs[i]);
+                inlier_quats.push_back(quats[i]);
             }
             else {
-                outlier_rvecs.push_back(rvecs[i]);
                 outlier_tvecs.push_back(tvecs[i]);
+                outlier_quats.push_back(quats[i]);
+                
+                // aruco::drawAxis(
+                //     frame, 
+                //     intrinsics,
+                //     distortion,
+                //     quat2rvec(quats[i]),
+                //     tvecs[i],
+                //     0.03
+                //     );
             }
 
         }
 
         // average based on inliers
-        for (int i=0 ; i<inlier_rvecs.size() ; i++) {
-            inlier_avg_rvec += inlier_rvecs[i];
+        for (int i=0 ; i<inlier_tvecs.size() ; i++) {
             inlier_avg_tvec += inlier_tvecs[i];
         }
 
-        inlier_avg_rvec = inlier_avg_rvec / float(inlier_rvecs.size());
         inlier_avg_tvec = inlier_avg_tvec / float(inlier_tvecs.size());
         
         // return cleaned and averaged T
-        // Matx44f T_cm = getHomogeneousTransformationMatrix(inlier_avg_rvec, inlier_avg_tvec);
-        pose.T = getHomogeneousTransformationMatrix(inlier_avg_rvec, inlier_avg_tvec);
+        pose.T = getHomogeneousTransformationMatrix(
+            quat2rvec(averageQuaternions(inlier_quats)), 
+            inlier_avg_tvec
+            );
         pose.n_fiducials = ids.size();
         return pose;
         // return make_pair(ids.size(), T_cm);
@@ -253,104 +282,77 @@ fiducialPose fiducialPoseDetector::getCleanModelPose(Mat frame, string modelName
     }
 }
 
+// average quaternions, based on Markley, F. Landis, Yang Cheng, John Lucas Crassidis, and Yaakov Oshman. "Averaging quaternions." Journal of Guidance, Control, and Dynamics 30, no. 4 (2007): 1193-1197.
+Eigen::Vector4d fiducialPoseDetector::averageQuaternions(vector<Eigen::Vector4d> Q) {
 
-// map<int, Matx44d> fiducialPoseDetector::getCenterPoses(Mat frame) {
-//     map<int, Matx44d> T_cm_map;
+    // add the quaternion and its transpose to a 4x4 matrix
+    Eigen::Matrix4d A;
+    for (auto& q : Q) {
+        A = q * q.transpose() + A;
+    }
 
-//     // create a copy of the frame
-//     Mat frameCopy;
-//     frame.copyTo(frameCopy);
+    // retun the eigenvector of A
+    Eigen::EigenSolver<Eigen::Matrix4d> solver(A);
+    return solver.eigenvectors().real().col(0);
+}
 
-//     // detect markers
-//     vector<int> ids;
-//     vector< vector<Point2f> > corners;
-//     aruco::detectMarkers(frame, dict, corners, ids);
 
-//     // if any markers are detected
-//     if (ids.size() > 0) {
-
-//         // estimate pose relative to camera
-//         vector<Vec3d> rvecs, tvecs;
-//         aruco::estimatePoseSingleMarkers(
-//             corners,
-//             ARUCO_MARKER_SIZE,
-//             intrinsics,
-//             distortion,
-//             rvecs,
-//             tvecs
-//         );
-
-//         // and for each markers
-//         map<int, Matx44d> T_co_map;
-//         for (int i=0 ; i<ids.size() ; i++) {
-
-//             // transform pose from fiducial to poster center
-//             Matx44d T_ct = getHomogeneousTransformationMatrix(rvecs[i], tvecs[i]);
-//             Matx44d T_co = matrixDot(T_ct, T_to[ids[i]]);
-//             T_co_map[ids[i]] = (T_co);
-//         }
-
-//         // average the T_co from all tags
-//         Matx44d avg_T_co = averageMatrix(T_co_map);
-
-//         // for each model
-//         for (auto & model : modelNames) {
-//             // Matx44d T_cm = matrixDot(avg_T_co, T_om[model]);
-//             // T_cm_map.push_back(T_cm);
-//             if (model == "d-handle") {
-//                 // cout << model << endl;
-//                 // cout << matrixDot(avg_T_co, T_om[model]) << endl;
-
-//             }
-
-//             // save the T_cm
-//             T_cm_map.push_back( matrixDot(avg_T_co, T_om[model]) );
-//         }
-//         // cout << endl;
-//     }
-//     return T_cm_map;
-// }
-
-// average the elements in a vector of matrices
-// Matx44d fiducialPoseDetector::averageMatrix(vector<Matx44d> Ts) {
-//     Matx44d avgT;
-//     int n = Ts.size();
-
-//     // sum element by element
-//     for (auto & T : Ts) {
-//         for (int row=0 ; row<T.rows ; row++) {
-//             for(int col=0 ; col<T.cols ; col++) {
-//                 avgT(row, col) += T(row, col);
-//             }
-//         }
-//     }
-
-//     // divide by n
-//     for (int row=0 ; row<avgT.rows ; row++) {
-//         for(int col=0 ; col<avgT.cols ; col++) {
-//             avgT(row, col) /= n;
-//         }
-//     }
-
-//     return avgT;
-// }
-
+// print the names of available models
 string fiducialPoseDetector::printModelNames() {
     string models = "";
     bool first = true;
     for (auto const & x : T_om) {
-        // if (!first) cout << ", ";
-        // if (!first) strcat(models, ", " << x.first);
         if (first) {
             first = false;
             models = x.first;
         }
         else {
-            // strcat(models, strcat(", ", x.first) );
             models = models + ", " + x.first;
         }
-        // cout << x.first;
     }
 
     return models;
+}
+
+
+// convert a opencv rvec to eigen quaternion
+Eigen::Quaterniond fiducialPoseDetector::rvec2quat(cv::Vec3d rvec) {
+    
+    // cast as opencv matrix and convert to rotation matrix
+    cv::Mat R_cv;
+    cv::Rodrigues(rvec, R_cv);
+
+    // convert rotation matrix to quat
+    Eigen::Matrix3d R;
+    cv::cv2eigen(R_cv, R);
+    Eigen::Quaterniond q(R);
+
+    return q;
+}
+
+
+// convert a eigen quaternion to a eigen vector of length 4
+Eigen::Vector4d fiducialPoseDetector::quat2vec(Eigen::Quaterniond q) {
+    Eigen::Vector4d w;
+    w(0) = q.vec()[0];
+    w(1) = q.vec()[1];
+    w(2) = q.vec()[2];
+    w(3) = q.w();
+    return w;
+}
+
+
+// convert a eigen quaternion in vector form to opencv rvec
+Vec3d fiducialPoseDetector::quat2rvec(Eigen::Vector4d v) {
+
+    // convert from quaternion to rotation matrix
+    Eigen::Quaterniond q(v);
+    Eigen::Matrix3d R = q.normalized().toRotationMatrix();
+    Mat R_cv;
+    eigen2cv(R, R_cv);
+
+    // use rotation matrix to calculate rvec
+    Vec3d rvec;
+    Rodrigues(R_cv, rvec);
+    return rvec;
 }

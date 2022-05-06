@@ -10,6 +10,14 @@
 
 using json = nlohmann::json;
 
+// get the filename from a file path
+// courtesy of https://stackoverflow.com/questions/8520560/get-a-file-name-from-a-path
+std::string getFilename(std::string filepath) {
+    std::string filename = filepath.substr(filepath.find_last_of("/\\") + 1);
+    std::string::size_type const p(filename.find_last_of("."));
+    return filename.substr(0, p);
+}
+
 // print matrix to single line
 std::string printMatrixSingleLine(cv::Matx44f T) {
     std::string matrix = "[";
@@ -52,46 +60,46 @@ void printMatrix(cv::Matx33f T) {
     }
 }
 
-// Checks if a matrix is a valid rotation matrix.
-bool isRotationMatrix(cv::Mat &R)
-{
-    cv::Mat Rt;
-    transpose(R, Rt);
-    cv::Mat shouldBeIdentity = Rt * R;
-    cv::Mat I = cv::Mat::eye(3,3, shouldBeIdentity.type());
+// // Checks if a matrix is a valid rotation matrix.
+// bool isRotationMatrix(cv::Mat &R)
+// {
+//     cv::Mat Rt;
+//     transpose(R, Rt);
+//     cv::Mat shouldBeIdentity = Rt * R;
+//     cv::Mat I = cv::Mat::eye(3,3, shouldBeIdentity.type());
 
-    return  norm(I, shouldBeIdentity) < 1e-6;
+//     return  norm(I, shouldBeIdentity) < 1e-6;
 
-}
+// }
 
 // Calculates rotation matrix to euler angles
 // The result is the same as MATLAB except the order
 // of the euler angles ( x and z are swapped ).
-cv::Vec3f rotationMatrixToEulerAngles(cv::Mat &R)
-{
+// cv::Vec3f rotationMatrixToEulerAngles(cv::Mat &R)
+// {
 
-    assert(isRotationMatrix(R));
+//     assert(isRotationMatrix(R));
 
-    float sy = sqrt(R.at<double>(0,0) * R.at<double>(0,0) +  R.at<double>(1,0) * R.at<double>(1,0) );
+//     float sy = sqrt(R.at<double>(0,0) * R.at<double>(0,0) +  R.at<double>(1,0) * R.at<double>(1,0) );
 
-    bool singular = sy < 1e-6; // If
+//     bool singular = sy < 1e-6; // If
 
-    float x, y, z;
-    if (!singular)
-    {
-        x = atan2(R.at<double>(2,1) , R.at<double>(2,2));
-        y = atan2(-R.at<double>(2,0), sy);
-        z = atan2(R.at<double>(1,0), R.at<double>(0,0));
-    }
-    else
-    {
-        x = atan2(-R.at<double>(1,2), R.at<double>(1,1));
-        y = atan2(-R.at<double>(2,0), sy);
-        z = 0;
-    }
-    return cv::Vec3f(x, y, z);
+//     float x, y, z;
+//     if (!singular)
+//     {
+//         x = atan2(R.at<double>(2,1) , R.at<double>(2,2));
+//         y = atan2(-R.at<double>(2,0), sy);
+//         z = atan2(R.at<double>(1,0), R.at<double>(0,0));
+//     }
+//     else
+//     {
+//         x = atan2(-R.at<double>(1,2), R.at<double>(1,1));
+//         y = atan2(-R.at<double>(2,0), sy);
+//         z = 0;
+//     }
+//     return cv::Vec3f(x, y, z);
 
-}
+// }
 
 
 // get rotation and translation vectors from a homogeneous transfomration matrix
@@ -109,23 +117,27 @@ cv::Vec3f rotationMatrixToEulerAngles(cv::Mat &R)
 //     }
 // }
 
-cv::Vec3d avgTransformedVector(std::vector< cv::Vec3d > rvecs) {
-    int i=0;
-    double x, y, z = 0;
-    for (auto & element : rvecs) {
-        x += element[0];
-        y += element[1];
-        z += element[2];
-        i++;
-    }
-    cv::Vec3d result;
-    result[0] = x / float(i);
-    result[1] = y / float(i);
-    result[2] = z / float(i);
 
-    return result;
-}
+//
+// cv::Vec3d avgTransformedVector(std::vector< cv::Vec3d > rvecs) {
+//     int i=0;
+//     double x, y, z = 0;
+//     for (auto & element : rvecs) {
+//         x += element[0];
+//         y += element[1];
+//         z += element[2];
+//         i++;
+//     }
+//     cv::Vec3d result;
+//     result[0] = x / float(i);
+//     result[1] = y / float(i);
+//     result[2] = z / float(i);
 
+//     return result;
+// }
+
+
+// extract the rotation vector from a homogeneous transformation matrix
 cv::Vec3d getRvecFromT(cv::Matx44d T) {
     cv::Matx33d R;
     cv::Vec3d rvec;
@@ -138,6 +150,8 @@ cv::Vec3d getRvecFromT(cv::Matx44d T) {
     return rvec;
 }
 
+
+// extract the translation vector from a homogeneous transformation matrix
 cv::Vec3d getTvecFromT(cv::Matx44d T) {
     cv::Vec3d tvec;
     for (int i=0 ; i<3 ; i++) {
@@ -145,6 +159,7 @@ cv::Vec3d getTvecFromT(cv::Matx44d T) {
     }
     return tvec;
 }
+
 
 // perform matrix multiplication
 cv::Matx44d matrixDot(cv::Matx44d A, cv::Matx44d B) {
@@ -156,18 +171,19 @@ cv::Matx44d matrixDot(cv::Matx44d A, cv::Matx44d B) {
             }
         }            
     }
-    
     return C;
 } 
 
-cv::Matx44d getTagToCenterT(std::array<float, 2> placement) {
-    cv::Matx44d T;
 
+//
+cv::Matx44d getTagToCenterT(std::array<float, 2> placement) {
     // make it a identity matrix (no rotation)
-    T(0, 0) = 1;
-    T(1, 1) = 1;
-    T(2, 2) = 1;
-    T(3, 3) = 1;
+    cv::Matx44d T = cv::Matx44d::eye();
+
+    // T(0, 0) = 1;
+    // T(1, 1) = 1;
+    // T(2, 2) = 1;
+    // T(3, 3) = 1;
 
     // add displacement vector to T
     T(0, 3) = placement[0]; // x displacement
@@ -176,9 +192,6 @@ cv::Matx44d getTagToCenterT(std::array<float, 2> placement) {
     return T;
 }
 
-bool sortcol(const std::array<float, 3> a1, const std::array<float, 3> a2) {
-    return a1[0] < a2[0];
-}
 
 std::vector<std::string> getModelNames(std::string filepath) {
     // convert string to input stream class
@@ -226,7 +239,15 @@ std::map<std::string, cv::Matx44d> getModelPositions(std::string filepath) {
 
 }
 
+
+// helper function for getPosterMeasurements()
+bool sortcol(const std::array<float, 3> a1, const std::array<float, 3> a2) {
+    return a1[0] < a2[0];
+}
+
+// reads a json file with the distance of tag to the center of the poster
 std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath) {
+
     // convert string to input stream class
     std::ifstream inputData(filepath);
 
@@ -234,12 +255,13 @@ std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath) 
     json j;
     inputData >> j;
 
-    // std::vector<float> data;
-    std::vector< std::array<float, 3> > data; // (12, {0.0, 0.0});
+    // create vector to hold the data, contains arrays with the tag ID and XY translation
+    std::vector< std::array<float, 3> > data;
 
-    // std::cout << "Size: " << j.size();
+    // iterate through the json file
     for (json::iterator it=j.begin() ; it != j.end() ; ++it) {
         
+        // write each element to the array
         std::array<float, 3> row;
         row[0] = std::stof(it.key());
         int i=1;
@@ -247,18 +269,15 @@ std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath) 
             row[i] = float(element) / 1000.0;
             i++;
         }
-        // std::cout << it.key() << ": ";
-        // std::cout << pair[0] << " " <<pair[1] << "\n";
 
+        // append array to vector
         data.push_back(row);
     }
 
+    // sort vector based on value of first element in each array
     std::sort(data.begin(), data.end(), sortcol);
 
-    // for (auto& row : data) {
-    //     std::cout << row[0] << ": " << row[1] << "\t" << row[2] << "\n";
-    // }
-
+    // write XY positon to new vector of arrays and return
     std::vector< std::array<float, 2> > result;
     for (auto& row : data) {
         std::array<float, 2> pair;
@@ -270,6 +289,8 @@ std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath) 
     return result;
 }
 
+
+// reads a json file with camera intrinsics, return the camera matrix
 cv::Matx33f getCameraIntrinsics(std::string filepath) {
     // convert string to input stream class
     std::ifstream inputData(filepath);
@@ -294,6 +315,7 @@ cv::Matx33f getCameraIntrinsics(std::string filepath) {
 }
 
 
+// reads a json file with camera intrinsics, returns a vector with distortion coefficients
 cv::Mat getCameraDistortion(std::string filepath) {
     std::ifstream inputData(filepath);
 
@@ -314,7 +336,8 @@ cv::Mat getCameraDistortion(std::string filepath) {
 
 }
 
-// return a homogeneous transformation matrix
+
+// return a homogeneous transformation matrix, given a rotation and translation vector
 cv::Matx44d getHomogeneousTransformationMatrix(cv::Vec3d rvec, cv::Vec3d tvec) {
     // create a 4x4 matrix of all zeros
     cv::Matx44d T;

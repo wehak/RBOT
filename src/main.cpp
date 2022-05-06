@@ -105,10 +105,17 @@ int main(int argc, char *argv[])
     const string PosterMeasurementsFilepath = "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_tag_positions.json";
     const string modelPositionFilepath = "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_model_positions.json";
     
-    // const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/output/calibration/blueeye_air.json";
-    const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/cam_calibration_json/blueye_tank_1080.json";
+    // const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/cam_calibration_json/samsung_s20_h_1080.json";
+    const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/cam_calibration_json/blueye_tank_1080_nodistort.json";
 
-    const int MIN_FIDUCIALS = 2;
+    // const string inputVideo = "/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4";
+    const string inputVideo = "/media/wehak/OS/Users/hweyd/Documents/My Videos/oceanlab_video/dataset/test_1_1.mp4";
+
+    const int MIN_FIDUCIALS = 5;
+    const float TVEC_COEF = 2;
+
+    const bool record = false;
+    const bool undistortFrame = true;
 
 
     /************
@@ -123,8 +130,6 @@ int main(int argc, char *argv[])
         distCoeffs(i) = distortion.at<float>(i, 0);
     }
 
-    const bool record = false;
-    const bool undistortFrame = false;
 
     float fiducialTagSize = 0.14; // [m]
     Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::DICT_APRILTAG_16h5);
@@ -133,6 +138,33 @@ int main(int argc, char *argv[])
     const int nMeanSamples = 5;
     vector<std::chrono::duration<double>> t_iteration;
 
+    // camera image size
+    // int width = 1138;
+    // int height = 640;
+    int width = 1920;
+    int height = 1080;
+    
+    // near and far plane of the OpenGL view frustum
+    float zNear = 10.0;
+    float zFar = 10000.0;
+    
+    // camera instrinsics 
+    // Matx33f K = Matx33f(650.048, 0, 324.328, 0, 647.183, 257.323, 0, 0, 1); // sample defaults
+    // Matx33f K = Matx33f(893.6084327447165, 0.0, 579.7766602490716, 0.0, 895.7142289287846, 323.8682945945517, 0.0, 0.0, 1.0); // canon g5x video
+    // Matx33f K = Matx33f(543.7763964666945, 0.0, 338.10640491567415, 0.0, 544.0291633358358, 222.64448193460834, 0.0, 0.0, 1.0); // dell xps webcam
+    // Matx33f K = Matx33f(1742.846017065312, 0.0, 561.1918240669172, 0.0, 1747.3323386985453, 963.8549487863223, 0.0, 0.0, 1.0); // samsung s20 5g vertical
+    // Matx33f K = Matx33f(1780.8593020747785, 0.0, 921.4040583220925, 0.0, 1775.352467023823, 538.4276419433833, 0.0, 0.0, 1.0); // samsung s20 5g horizontal
+    // Matx33f K = Matx33f(952.3526885892495, 0.0, 939.5077453607088, 0.0, 949.6063395088117, 526.5838186301586, 0.0, 0.0, 1.0); // blueeye rov
+
+    // distortion coefficients (k1, k2, p1, p2)
+    // Matx14f distCoeffs =  Matx14f(0.0, 0.0, 0.0, 0.0);
+    // Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
+    // Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
+    
+    // distances for the pose detection template generation
+    vector<float> distances = {200.0f, 400.0f, 800.0f};
+
+    // create fiducial pose estimator
     fiducialPoseDetector fiducial_detector(
         CameraMetricsFilepath,
         PosterMeasurementsFilepath,
@@ -165,39 +197,13 @@ int main(int argc, char *argv[])
         abort();
     }
 
-    // camera image size
-    // int width = 1138;
-    // int height = 640;
-    int width = 1920;
-    int height = 1080;
-    
-    // near and far plane of the OpenGL view frustum
-    float zNear = 10.0;
-    float zFar = 10000.0;
-    
-    // camera instrinsics 
-    // Matx33f K = Matx33f(650.048, 0, 324.328, 0, 647.183, 257.323, 0, 0, 1); // sample defaults
-    // Matx33f K = Matx33f(893.6084327447165, 0.0, 579.7766602490716, 0.0, 895.7142289287846, 323.8682945945517, 0.0, 0.0, 1.0); // canon g5x video
-    // Matx33f K = Matx33f(543.7763964666945, 0.0, 338.10640491567415, 0.0, 544.0291633358358, 222.64448193460834, 0.0, 0.0, 1.0); // dell xps webcam
-    // Matx33f K = Matx33f(1742.846017065312, 0.0, 561.1918240669172, 0.0, 1747.3323386985453, 963.8549487863223, 0.0, 0.0, 1.0); // samsung s20 5g vertical
-    // Matx33f K = Matx33f(1780.8593020747785, 0.0, 921.4040583220925, 0.0, 1775.352467023823, 538.4276419433833, 0.0, 0.0, 1.0); // samsung s20 5g horizontal
-    // Matx33f K = Matx33f(952.3526885892495, 0.0, 939.5077453607088, 0.0, 949.6063395088117, 526.5838186301586, 0.0, 0.0, 1.0); // blueeye rov
-
-    // distortion coefficients (k1, k2, p1, p2)
-    // Matx14f distCoeffs =  Matx14f(0.0, 0.0, 0.0, 0.0);
-    // Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
-    // Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
-    
-    // distances for the pose detection template generation
-    vector<float> distances = {200.0f, 400.0f, 800.0f};
-
     // load 3D objects
     vector<Object3D*> objects;
     string selectedModelPath = "data/" + selectedModel + ".obj";
     cout << "Reading: " << selectedModelPath << endl;
     objects.push_back(new Object3D(selectedModelPath, 0, 0, 1000, 90, 0, 0, 1.0, 0.55f, distances));
     
-    // create the pose estimator
+    // create the RBOT pose estimator
     PoseEstimator6D* poseEstimator = new PoseEstimator6D(
         width, height,
         zNear, zFar, 
@@ -221,8 +227,7 @@ int main(int argc, char *argv[])
     // initialize camera    
     Mat frame;
     // VideoCapture cap("/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4");
-    VideoCapture cap("/media/wehak/OS/Users/hweyd/Documents/My Videos/oceanlab_video/dataset/test_1_3.mp4");
-    // VideoCapture cap("/home/wehak/Videos/vid/vid/ducky_aruco_640.MP4");
+    VideoCapture cap(inputVideo);
     VideoWriter outputVideo("/home/wehak/Videos/master/output/rbot_pose_test.avi", VideoWriter::fourcc('M','J','P','G'), cap.get(CAP_PROP_FPS), Size(cap.get(CAP_PROP_FRAME_WIDTH), cap.get(CAP_PROP_FRAME_HEIGHT)));
     
     // VideoCapture cap;
@@ -244,7 +249,6 @@ int main(int argc, char *argv[])
         auto tStart = std::chrono::high_resolution_clock::now();
 
         // obtain an input image
-        // frame = imread("data/frame.png");
         cap.read(frame);
         if (frame.empty()) {
             cout << "Error: Blank frame grabbed\n";
@@ -252,13 +256,14 @@ int main(int argc, char *argv[])
         }
         
         // get model pose from fiducial
-        fiducialPose pose = fiducial_detector.getCleanModelPose(frame, selectedModel, 2, MIN_FIDUCIALS);
+        fiducialPose pose = fiducial_detector.getCleanModelPose(frame, selectedModel, TVEC_COEF, MIN_FIDUCIALS);
 
         // get model poses from RBOT
         poseEstimator->estimatePoses(frame, undistortFrame, true);
         
         // cout << objects[0]->getPose() << endl;
-        cout << printMatrixSingleLine(objects[0]->getPose()) << endl;        
+        cout << printMatrixSingleLine(objects[0]->getPose()) << endl;    
+    
         // render the models with the resulting pose estimates ontop of the input image
         Mat result = drawResultOverlay(objects, frame);
 
@@ -305,10 +310,11 @@ int main(int argc, char *argv[])
         auto FPS = 1.0 / ((1.0 / nMeanSamples) * sum.count());
         putText(result, to_string((int)round(FPS)), Point(10, 30), FONT_HERSHEY_DUPLEX, 1.0, Scalar(0, 255, 0), 1);
 
+        // record poses
         measurements.push_back(vector<string>{to_string(diff.count()), to_string(pose.n_fiducials), printMatrixSingleLine(pose.T), printMatrixSingleLine(objects[0]->getPose())});
 
+        // show frame
         imshow("result", result);
-        
         int key = waitKey(timeout);
         
         // start/stop tracking the first object
@@ -317,7 +323,7 @@ int main(int argc, char *argv[])
             poseEstimator->reset();
 
             poseEstimator->toggleTracking(frame, 0, undistortFrame);
-            poseEstimator->estimatePoses(frame, false, undistortFrame);
+            poseEstimator->estimatePoses(frame, undistortFrame, true);
 
             timeout = 1;
             showHelp = !showHelp;
@@ -373,7 +379,7 @@ int main(int argc, char *argv[])
 
     // write measurements data to file
     ofstream log;
-    string output_filename = "./data/measurement_log_" + selectedModel + ".txt";
+    string output_filename = "./data/measurement_log_" + getFilename(inputVideo) + "_" + selectedModel + ".txt";
     // log.open("./data/measurement_log.txt");
     log.open(output_filename);
     if (log.is_open()) {

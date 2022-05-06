@@ -8,7 +8,7 @@
 #include <opencv2/core/matx.hpp>
 
 std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath);
-
+std::string getFilename(std::string filepath);
 
 cv::Matx44d matrixDot(cv::Matx44d A, cv::Matx44d B);
 cv::Matx44d getTagToCenterT(std::array<float, 2> placement);
