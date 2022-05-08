@@ -1,14 +1,31 @@
+#include <string>
+#include <iostream>
+#include <algorithm>
+#include <map>
+#include <bits/stdc++.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include "utility.h"
 #include "json.hpp"
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 
-// #include <string>
-#include <iostream>
-#include <algorithm>
-#include <map>
+
 
 using json = nlohmann::json;
+
+// create a folder if folder does not exist
+void create_directory(std::string folderPath) {
+    {
+  
+    // Creating a directory
+    if (mkdir(folderPath.c_str(), 0777) == -1) return;
+    else
+        // std::cout << "Directory created";
+        return;
+    }
+}
 
 // get the filename from a file path
 // courtesy of https://stackoverflow.com/questions/8520560/get-a-file-name-from-a-path

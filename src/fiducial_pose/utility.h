@@ -7,6 +7,7 @@
 
 #include <opencv2/core/matx.hpp>
 
+void create_directory(std::string folderPath);
 std::vector< std::array<float, 2> > getPosterMeasurements(std::string filepath);
 std::string getFilename(std::string filepath);
 

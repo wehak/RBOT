@@ -42,7 +42,6 @@
 #include <string>
 #include <cmath>
 #include <fstream>
-#include <map>
 
 #include <QApplication>
 #include <QThread>
@@ -55,36 +54,9 @@
 
 #include "fiducial_pose/fiducial_pose_detect.h"
 #include "fiducial_pose/utility.h"
-#include "fiducial_pose/json.hpp"
 
 using namespace std;
 using namespace cv;
-using json = nlohmann::json;
-
-bool posesCorrespond(Matx44f A, Matx44f B, map<string, float> limit) {
-    Vec3d A_rvec = getRvecFromT(A) * (180 / 3.14); // radians to degrees
-    Vec3d B_rvec = getRvecFromT(B) * (180 / 3.14);
-
-    Vec3d A_tvec = getTvecFromT(A);
-    Vec3d B_tvec = getTvecFromT(B);
-    
-    // if difference is within limits, return true
-    if (
-        abs(A_rvec[0] - B_rvec[0]) < limit["RVEC_X_MAX"] &&
-        abs(A_rvec[1] - B_rvec[1]) < limit["RVEC_Y_MAX"] &&
-        abs(A_rvec[2] - B_rvec[2]) < limit["RVEC_Z_MAX"] &&
-
-        abs(A_tvec[0] - B_tvec[0]) < limit["TVEC_X_MAX"] &&
-        abs(A_tvec[1] - B_tvec[1]) < limit["TVEC_Y_MAX"] &&
-        abs(A_tvec[2] - B_tvec[2]) < limit["TVEC_Z_MAX"]
-    ) {
-        return true;
-    }
-    // else return false
-    else {
-        return false;
-    }    
-}
 
 cv::Mat drawResultOverlay(const vector<Object3D*>& objects, const cv::Mat& frame)
 {
@@ -120,79 +92,30 @@ cv::Mat drawResultOverlay(const vector<Object3D*>& objects, const cv::Mat& frame
     return result;
 }
 
-cv::Mat drawBinaryMask(const vector<Object3D*>& objects, const cv::Mat& frame)
-{
-    // render the models with phong shading
-    RenderingEngine::Instance()->setLevel(0);
-    
-    RenderingEngine::Instance()->renderSilhouette(
-        objects[0], 
-        GL_FILL, 
-        false,
-        1.0,
-        1.0,
-        1.0,
-        true
-        );
-    
-    // download the rendering to the CPU
-    Mat mask = RenderingEngine::Instance()->downloadFrame(RenderingEngine::MASK);    
-    return mask;
-}
-
 
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
-    // read arguments      
-    string configFilePath;
-    if (argc == 2) {
-        configFilePath = argv[1];
-    }
-    else {
-        cout << "Error: No configuration file specified." << endl;
-        abort();
-    }
+    /*************
+    * PARAMETERS *
+    *************/
+   
+    const string PosterMeasurementsFilepath = "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_tag_positions.json";
+    const string modelPositionFilepath = "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_model_positions.json";
+    
+    // const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/cam_calibration_json/samsung_s20_h_1080.json";
+    const string CameraMetricsFilepath = "/home/wehak/Dropbox/ACIT master/data/cam_calibration_json/blueye_tank_1080.json";
 
-    // read the config file
-    ifstream configFile(configFilePath);
-    json j;
-    configFile >> j;
+    // const string inputVideo = "/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4";
+    const string inputVideo = "/media/wehak/OS/Users/hweyd/Documents/My Videos/oceanlab_video/dataset/test_1_1.mp4";
 
-    // read each parameter
-    const string outputFrames = j["outputFrames"];
-    const string selectedModel = j["selectedModel"];
-    const string inputVideoPath = j["inputVideoPath"];
+    const int MIN_FIDUCIALS = 5;
+    const float TVEC_COEF = 2;
 
-    const string PosterMeasurementsFilepath = j["PosterMeasurementsFilepath"];
-    const string modelPositionFilepath = j["modelPositionFilepath"];
-    const string CameraMetricsFilepath = j["CameraMetricsFilepath"];
-
-    const string outputVideoPath = j["outputVideoPath"];
-
-    const int MIN_FIDUCIALS = j["MIN_FIDUCIALS"];
-    const float TVEC_COEF = j["TVEC_COEF"];
-
-    map<string, float> limit;
-    limit["RVEC_X_MAX"] = j["RVEC_X_MAX"];
-    limit["RVEC_Y_MAX"] = j["RVEC_Y_MAX"];
-    limit["RVEC_Z_MAX"] = j["RVEC_Z_MAX"];
-
-    limit["TVEC_X_MAX"] = j["TVEC_X_MAX"];
-    limit["TVEC_Y_MAX"] = j["TVEC_Y_MAX"];
-    limit["TVEC_Z_MAX"] = j["TVEC_Z_MAX"];
-
-
-    // set some other parameters 
     const bool record = false;
-    const bool undistortFrame = false;
-    const int reInitializePoseLimit = 0;
-
-    // fiducials
-    float fiducialTagSize = 0.14; // fiducial size [m]
-    Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::DICT_APRILTAG_16h5); // fiducial dictionary
+    const bool undistortFrame = true;
 
 
     /************
@@ -207,17 +130,36 @@ int main(int argc, char *argv[])
         distCoeffs(i) = distortion.at<float>(i, 0);
     }
 
+
+    float fiducialTagSize = 0.14; // [m]
+    Ptr<aruco::Dictionary> dictionary = aruco::getPredefinedDictionary(aruco::DICT_APRILTAG_16h5);
+
     // measure FPS
     const int nMeanSamples = 5;
     vector<std::chrono::duration<double>> t_iteration;
 
     // camera image size
+    // int width = 1138;
+    // int height = 640;
     int width = 1920;
     int height = 1080;
     
     // near and far plane of the OpenGL view frustum
     float zNear = 10.0;
     float zFar = 10000.0;
+    
+    // camera instrinsics 
+    // Matx33f K = Matx33f(650.048, 0, 324.328, 0, 647.183, 257.323, 0, 0, 1); // sample defaults
+    // Matx33f K = Matx33f(893.6084327447165, 0.0, 579.7766602490716, 0.0, 895.7142289287846, 323.8682945945517, 0.0, 0.0, 1.0); // canon g5x video
+    // Matx33f K = Matx33f(543.7763964666945, 0.0, 338.10640491567415, 0.0, 544.0291633358358, 222.64448193460834, 0.0, 0.0, 1.0); // dell xps webcam
+    // Matx33f K = Matx33f(1742.846017065312, 0.0, 561.1918240669172, 0.0, 1747.3323386985453, 963.8549487863223, 0.0, 0.0, 1.0); // samsung s20 5g vertical
+    // Matx33f K = Matx33f(1780.8593020747785, 0.0, 921.4040583220925, 0.0, 1775.352467023823, 538.4276419433833, 0.0, 0.0, 1.0); // samsung s20 5g horizontal
+    // Matx33f K = Matx33f(952.3526885892495, 0.0, 939.5077453607088, 0.0, 949.6063395088117, 526.5838186301586, 0.0, 0.0, 1.0); // blueeye rov
+
+    // distortion coefficients (k1, k2, p1, p2)
+    // Matx14f distCoeffs =  Matx14f(0.0, 0.0, 0.0, 0.0);
+    // Matx14f distCoeffs =  Matx14f(0.03278270430670608, -0.009389285121867291, -0.001952381467447879, -0.007213736827947127); // samsung s20 5g horizontal
+    // Matx14f distCoeffs =  Matx14f(-0.25880017407368267, 0.11329539367233754, -0.000471868947826731, 0.00010304816317521514); // blueeye rov
     
     // distances for the pose detection template generation
     vector<float> distances = {200.0f, 400.0f, 800.0f};
@@ -231,6 +173,30 @@ int main(int argc, char *argv[])
         fiducialTagSize
     );
 
+    // get arguments
+    string selectedModel;
+    if (argc > 2) {
+        int c;
+        while( (c = getopt(argc, argv, "hm:")) != -1) {
+            switch(c) {
+                case 'm':
+                    selectedModel = strdup(optarg);
+                    // cout << optarg;
+                    break;
+                case 'h':
+                    cout << "-m <model name>" << endl;
+                    abort();
+                default:
+                    cout << "-m <model name>" << endl;
+                    abort();
+            }
+        }
+    }
+    else {
+        cout << "Error: No model selected. Use -m <model name>.\nAvailable models: "<< fiducial_detector.printModelNames() << endl;
+        abort();
+    }
+
     // load 3D objects
     vector<Object3D*> objects;
     string selectedModelPath = "data/" + selectedModel + ".obj";
@@ -242,9 +208,11 @@ int main(int argc, char *argv[])
         width, height,
         zNear, zFar, 
         intrinsics, 
+        // fiducial_detector.intrinsics, 
         distCoeffs, 
         objects
         );
+    // PoseEstimator6D* poseEstimator = new PoseEstimator6D(width, height, zNear, zFar, K, distCoeffs, objects);
     
     // move the OpenGL context for offscreen rendering to the current thread, if run in a seperate QT worker thread (unnessary in this example)
     //RenderingEngine::Instance()->getContext()->moveToThread(this);
@@ -253,34 +221,31 @@ int main(int argc, char *argv[])
     RenderingEngine::Instance()->makeCurrent();
     
     int timeout = 0;
+    
     bool showHelp = true;
 
     // initialize camera    
     Mat frame;
-    VideoCapture cap(inputVideoPath);
-    VideoWriter outputVideo(outputVideoPath, VideoWriter::fourcc('M','J','P','G'), cap.get(CAP_PROP_FPS), Size(cap.get(CAP_PROP_FRAME_WIDTH), cap.get(CAP_PROP_FRAME_HEIGHT)));
+    // VideoCapture cap("/home/wehak/Videos/master/input/samsung_20_horizontal/oceanlab_in_air.mp4");
+    VideoCapture cap(inputVideo);
+    VideoWriter outputVideo("/home/wehak/Videos/master/output/rbot_pose_test.avi", VideoWriter::fourcc('M','J','P','G'), cap.get(CAP_PROP_FPS), Size(cap.get(CAP_PROP_FRAME_WIDTH), cap.get(CAP_PROP_FRAME_HEIGHT)));
     
+    // VideoCapture cap;
+    // int deviceID = 0; // default camera
+    // int apiID = cv::CAP_ANY; // autodetect default API
+    // cap.open(deviceID, apiID); // open camera
+
     // check if successful 
     if (!cap.isOpened()) {
-        cout << "Error: Unable to open video file\n";
+        cout << "Error: Unable to open camera\n";
         return -1;
     }
 
     // record measurements
     vector< vector<string> > measurements;
 
-    // create output data folder
-    create_directory("./data");
-    create_directory("./data/" + outputFrames);
-    create_directory("./data/" + outputFrames + "/mask");
-    create_directory("./data/" + outputFrames + "/img");
-
-    // per frame loop
-    int frame_n = 0;
-    int missed_frames = 0;
     while(true)
     {
-        // start timer
         auto tStart = std::chrono::high_resolution_clock::now();
 
         // obtain an input image
@@ -295,45 +260,27 @@ int main(int argc, char *argv[])
 
         // get model poses from RBOT
         poseEstimator->estimatePoses(frame, undistortFrame, true);
-
-
-        // DEBUG
+        
+        // cout << objects[0]->getPose() << endl;
         cout << printMatrixSingleLine(objects[0]->getPose()) << endl;    
     
         // render the models with the resulting pose estimates ontop of the input image
         Mat result = drawResultOverlay(objects, frame);
 
 
-        // record frame and mask
-        Mat mask = drawBinaryMask(objects, frame);
+        // draw poses on frame
+        // aruco::drawAxis(
+        //     result, 
+        //     intrinsics,
+        //     distortion,
+        //     getRvecFromT(objects[0]->getPose()),
+        //     getTvecFromT(objects[0]->getPose()),
+        //     0.05
+        //     );
 
-        // normalize RBOT tvec (from mm to meters)
-        Matx44f T_rbot = objects[0]->getPose();
-        for (int i=0 ; i<3 ; i++) T_rbot(i, 3) = T_rbot(i, 3) / float(1000);
 
-        // DEBUG
-        cout << printMatrixSingleLine(T_rbot) << endl;  
-
-        // check if poses correspond
-        if (posesCorrespond(
-                // objects[0]->getPose() / float(1000), // RBOT pose, normalized to meters
-                T_rbot, // RBOT pose
-                pose.T, // fiducial pose
-                limit // correspondence limits
-                )
-            ) {
-            missed_frames = 0;
-            imwrite("./data/" + outputFrames + "/mask/" + to_string(frame_n) + ".png", mask);
-            imwrite("./data/" + outputFrames + "/img/" + to_string(frame_n) + ".png", result);
-        }
-
-        // if not
-        else {
-            missed_frames++;
-        }
-
-        // draw fiducial pose ontop of the input image
         if (pose.n_fiducials >= MIN_FIDUCIALS) {
+            // draw poses on frame
             aruco::drawAxis(
                 result, 
                 intrinsics,
@@ -342,34 +289,22 @@ int main(int argc, char *argv[])
                 getTvecFromT(pose.T),
                 0.10
                 );
-
-            // reset RBOT is if there are successive correspondence failures
-            if (missed_frames >= reInitializePoseLimit) {
-                cout << "Reseting RBOT. " + to_string(missed_frames) + " frames missed." << endl;
-
-                poseEstimator->setModelInitialPose(0, pose.T);
-                poseEstimator->reset();
-            }
-        }
-        else {
-            if (missed_frames >= reInitializePoseLimit) {
-                cout << to_string(missed_frames) + " frames missed and no track on fiducials" << endl;
-            }
         }
 
         if(showHelp)
         {
-            putText(result, "Press '1' to initialize", Point(width / 3, height / 2 - 20), FONT_HERSHEY_DUPLEX, 1.0, Scalar(255, 0, 255), 1);
-            putText(result, "or 'c' to quit", Point(width / 3, height / 2 + 20), FONT_HERSHEY_DUPLEX, 1.0, Scalar(255, 0, 255), 1);
+            putText(result, "Press '1' to initialize", Point(150, 250), FONT_HERSHEY_DUPLEX, 1.0, Scalar(0, 255, 0), 1);
+            putText(result, "or 'c' to quit", Point(205, 285), FONT_HERSHEY_DUPLEX, 1.0, Scalar(0, 255, 0), 1);
         }
 
         // measure FPS
-        // auto tEnd = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> diff = std::chrono::high_resolution_clock::now() - tStart;
+        auto tEnd = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diff = tEnd - tStart;
         t_iteration.emplace_back(diff);
         std::chrono::duration<double> sum = std::chrono::duration<double>::zero();
         vector<std::chrono::duration<double>> t_recent (t_iteration.end() - nMeanSamples, t_iteration.end());
         for (auto n : t_recent) {
+            // cout << n.count() << ", ";
             sum += n;
         }
         auto FPS = 1.0 / ((1.0 / nMeanSamples) * sum.count());
@@ -388,7 +323,7 @@ int main(int argc, char *argv[])
             poseEstimator->reset();
 
             poseEstimator->toggleTracking(frame, 0, undistortFrame);
-            poseEstimator->estimatePoses(frame, undistortFrame, false);
+            poseEstimator->estimatePoses(frame, undistortFrame, true);
 
             timeout = 1;
             showHelp = !showHelp;
@@ -416,8 +351,6 @@ int main(int argc, char *argv[])
         if (record == true) {
             outputVideo.write(result);
         }
-
-        frame_n++;
     }
     
     // deactivate the offscreen rendering OpenGL context
@@ -434,9 +367,20 @@ int main(int argc, char *argv[])
     
     delete poseEstimator;
 
+    // write FPS data to file
+    // ofstream log;
+    // log.open("data/fps_log.txt");
+    // if (log.is_open()) {
+    //     for (auto n : t_iteration) {
+    //         log << n.count() << ",";
+    //     }
+    // }
+    // log.close();
+
     // write measurements data to file
     ofstream log;
-    string output_filename = "./data/" + outputFrames + "/measurement_log_" + getFilename(inputVideoPath) + "_" + selectedModel + ".txt";
+    string output_filename = "./data/measurement_log_" + getFilename(inputVideo) + "_" + selectedModel + ".txt";
+    // log.open("./data/measurement_log.txt");
     log.open(output_filename);
     if (log.is_open()) {
         for (auto& line : measurements) {

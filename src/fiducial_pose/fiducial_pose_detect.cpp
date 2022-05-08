@@ -180,9 +180,9 @@ fiducialPose fiducialPoseDetector::getCleanModelPose(Mat frame, string modelName
         vector<Vec3d> tvecs;
         vector<Vec3d> inlier_tvecs;
         vector<Vec3d> outlier_tvecs;
-        Vec3d tvec_avg;
-        Vec3d tvec_stdDev;
-        Vec3d inlier_avg_tvec;
+        Vec3d tvec_avg(0.0, 0.0, 0.0);
+        Vec3d tvec_stdDev(0.0, 0.0, 0.0);
+        Vec3d inlier_avg_tvec(0.0, 0.0, 0.0);
 
         // vector<Eigen::Quaterniond> quats;
         vector<Eigen::Vector4d> quats;
