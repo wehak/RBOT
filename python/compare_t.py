@@ -9,7 +9,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # data_file = Path("data/measurement_log_d-handle_undistort_false.txt")
-data_file = Path("/home/wehak/code/RBOT/data/test_1/measurement_log_test_1_1_d-handle.txt")
+data_file = Path("/home/wehak/code/RBOT/data/test_2/measurement_log_test_1_1_d-handle.txt")
 if not data_file.is_file():
     print("No file found.")
     exit()

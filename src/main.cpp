@@ -174,6 +174,7 @@ int main(int argc, char *argv[])
 
     const int MIN_FIDUCIALS = j["MIN_FIDUCIALS"];
     const float TVEC_COEF = j["TVEC_COEF"];
+    const int reInitializePoseLimit = j["reInitializePoseLimit"];
 
     map<string, float> limit;
     limit["RVEC_X_MAX"] = j["RVEC_X_MAX"];
@@ -188,7 +189,7 @@ int main(int argc, char *argv[])
     // set some other parameters 
     const bool record = false;
     const bool undistortFrame = false;
-    const int reInitializePoseLimit = 0;
+    // const int reInitializePoseLimit = 10;
 
     // fiducials
     float fiducialTagSize = 0.14; // fiducial size [m]
@@ -298,7 +299,7 @@ int main(int argc, char *argv[])
 
 
         // DEBUG
-        cout << printMatrixSingleLine(objects[0]->getPose()) << endl;    
+        // cout << printMatrixSingleLine(objects[0]->getPose()) << endl;    
     
         // render the models with the resulting pose estimates ontop of the input image
         Mat result = drawResultOverlay(objects, frame);
@@ -312,7 +313,7 @@ int main(int argc, char *argv[])
         for (int i=0 ; i<3 ; i++) T_rbot(i, 3) = T_rbot(i, 3) / float(1000);
 
         // DEBUG
-        cout << printMatrixSingleLine(T_rbot) << endl;  
+        // cout << printMatrixSingleLine(T_rbot) << endl;  
 
         // check if poses correspond
         if (posesCorrespond(
@@ -345,15 +346,17 @@ int main(int argc, char *argv[])
 
             // reset RBOT is if there are successive correspondence failures
             if (missed_frames >= reInitializePoseLimit) {
-                cout << "Reseting RBOT. " + to_string(missed_frames) + " frames missed." << endl;
+                cout << "No correspondance for " + to_string(missed_frames) + " frames. Attempting to reset RBOT." << endl;
 
                 poseEstimator->setModelInitialPose(0, pose.T);
                 poseEstimator->reset();
+                poseEstimator->toggleTracking(frame, 0, undistortFrame);
+                poseEstimator->estimatePoses(frame, undistortFrame, false);
             }
         }
         else {
             if (missed_frames >= reInitializePoseLimit) {
-                cout << to_string(missed_frames) + " frames missed and no track on fiducials" << endl;
+                cout << "No correspondance for " + to_string(missed_frames) + " frames. No track on fiducials."  << endl;
             }
         }
 
