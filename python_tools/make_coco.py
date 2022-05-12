@@ -1,5 +1,6 @@
 from __future__ import annotations
 from genericpath import exists
+from os import confstr
 from matplotlib.font_manager import json_dump
 import numpy as np
 import cv2 as cv
@@ -18,10 +19,11 @@ from pycocotools import mask
 
 config = {
     "input_files"       : Path("/media/wehak/Data/coco_master/test_1_d-handle"),
-    "database_folder"   : Path("/media/wehak/Data/coco_master/trial_dataset_1"),
+    "database_folder"   : Path("/media/wehak/Data/coco_master/trial_dataset_1/train"),
     "object_category"   : "d-handle",
     "verify_image"      : True,
     "show_image"        : True,
+    "bool_array"        : True,
 }
 
 # misc
@@ -29,14 +31,21 @@ if not config['input_files'].is_dir():
     print("Wrong path?")
     exit()
 
+# create folders
 config["database_folder"].mkdir(exist_ok=True, parents=True)
 img_folder = Path(f"{config['database_folder']}/data")
 img_folder.mkdir(exist_ok=True, parents=True)
 
+# misc variables
 color = [(255,0,0),(0,255,0),(0,0,255),(255,255,0),(255,0,255),(0,255,255)]
 n_removed = 0
 new_annotations = []
+new_categories = []
 new_images = []
+
+# last_img_id = 0
+min_cat_id = 1000 # start at high value as to not conflic with coco default categories
+min_img_id = 1000
 
 # delete image function
 def remove_img():
@@ -55,34 +64,78 @@ def unpack_c(contour):
 
 # read existing database
 """ stuff here """
-last_annot_id = 0
-last_img_id = 0
 
-prev_categories = [
+# if there is an existing labels file
+if Path(f"{config['database_folder']}/labels.json").is_file():
+
+    # read the existing labels
+    with open(f"{config['database_folder']}/labels.json", "r") as f:
+        previous_labels = json.load(f)
+        prev_categories = previous_labels["categories"]
+        prev_images = previous_labels["images"]
+        prev_annotations = previous_labels["annotations"]
+
+        # if new object cat is not in existing labels file, create a new cat
+        if not config["object_category"] in [cat["name"] for cat in prev_categories]:
+            new_categories.append({
+                "id": min_cat_id+len(prev_categories),
+                "name": config["object_category"],
+                "supercategory": None
+            })
+
+        # find highest annotation id
+        last_annot_id = max([annot["id"] for annot in prev_annotations])
+
+
+# if no labels file exist, create everyting from scratch
+else:
+    prev_categories = [
     {
-        "id": 2,
-        "name": "d-handle",
+        "id": min_cat_id,
+        "name": config["object_category"],
         "supercategory": None
     },
     ]
-prev_images = []
-prev_annotations = []
+    # prev_categories = []
+    prev_images = []
+    prev_annotations = []
+    last_annot_id = 0
+
+
+# create a set of existing image IDs
+prev_img_ids = set([img["id"] for img in prev_images])
+    
+
+
+
+# prev_categories = [
+#     {
+#         "id": 2,
+#         "name": "d-handle",
+#         "supercategory": None
+#     },
+# #     ]
+# prev_images = []
+# prev_annotations = []
 
 # is category new?
-new_categories = []
 
 
 # find images
 images = list(Path(f"{config['input_files']}/mask").glob("*.png"))
 #
+
 # DEBUG
 images = images[:25]
 #
+
+# read all images in path
 n_images = len(images)
 print(f"Found {n_images} images.")
 for i, mask_path in enumerate(images):
     img_path = Path(f"{config['input_files']}/img/{mask_path.stem}.png")
 
+    # skip if img file, but no mask file
     if config['verify_image']:
         if not mask_path.is_file():
             continue
@@ -173,30 +226,44 @@ for i, mask_path in enumerate(images):
         cv.waitKey(10)
 
     # write annotation
-    new_annotations.append({
-            "segmentation": {
-                "counts": encoded_obj["counts"].decode("utf-8"), 
-                "size": encoded_obj["size"]
-                },
-            # "segmentation": [unpack_c(c) for c in contours],
-            # "segmentation": polygons.segmentation,
-            # "area": areas[max_index], 
-            "area": gt_area.tolist(),
-            "iscrowd": 0,
-            "image_id": mask_path.stem,
-            "bbox": [x, y, w, h],
-            "category_id": 2,
-            "id": last_annot_id + i
-    })
+    if config["bool_array"]:
+        new_annotations.append({
+                "segmentation": {
+                    "counts": encoded_obj["counts"].decode("utf-8"), 
+                    "size": encoded_obj["size"]
+                    },
+                # "segmentation": [unpack_c(contours[max_index])],
+                # "segmentation": [unpack_c(c) for c in contours],
+                # "segmentation": polygons.segmentation,
+                # "area": areas[max_index], 
+                "area": gt_area.tolist(),
+                "iscrowd": 0,
+                "image_id": mask_path.stem,
+                "bbox": [x, y, w, h],
+                "category_id": 2,
+                "id": last_annot_id + i
+        })
+    else:
+        new_annotations.append({
+                "segmentation": [unpack_c(contours[max_index])],
+                # "segmentation": [unpack_c(c) for c in contours],
+                "area": areas[max_index], 
+                "iscrowd": 0,
+                "image_id": mask_path.stem,
+                "bbox": [x, y, w, h],
+                "category_id": 2,
+                "id": last_annot_id + i
+        })
 
-    new_images.append({
-            "id": mask_path.stem,
-            "license": 1,
-            "file_name": mask_path.name,
-            "height": height,
-            "width": width,
-            "date_captured": None
-    })
+    if mask_path.stem not in prev_img_ids:
+        new_images.append({
+                "id": mask_path.stem,
+                "license": 1,
+                "file_name": mask_path.name,
+                "height": height,
+                "width": width,
+                "date_captured": None
+        })
 
     #copy image
     copy_path = Path(f"{img_folder}/{img_path.name}")
@@ -227,7 +294,7 @@ labels = {
     "info": {
         "year": "2022",
         "version": "1.0",
-        "description": "DuckyDB",
+        "description": "ROV handle database",
         "contributor": "Håkon Weydahl",
         "url": "",
         # "date_created": "2021-01-19T09:48:27"

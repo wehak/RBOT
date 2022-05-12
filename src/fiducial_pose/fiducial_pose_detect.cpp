@@ -17,6 +17,7 @@ fiducialPoseDetector::fiducialPoseDetector(
     // read the camera properties
     intrinsics = getCameraIntrinsics(CameraMetricsFilepath);
     distortion = getCameraDistortion(CameraMetricsFilepath);
+    printMatrix(intrinsics);
 
     // create homogeneous transformation matrices linking every tag to the center of the poster
     posterMeasurements = getPosterMeasurements(PosterMeasurementsFilepath);
@@ -193,14 +194,14 @@ fiducialPose fiducialPoseDetector::getCleanModelPose(Mat frame, string modelName
 
 
         // create vector with rotation and translation vectors
-        for (const auto& pose : poses) {
+        for (const auto& pose_i : poses) {
             // append pose to vector
-            tvecs.push_back(getTvecFromT(pose.second)); 
+            tvecs.push_back(getTvecFromT(pose_i.second)); 
 
             // add value to calculate average
             tvec_avg += tvecs.back();
 
-            Eigen::Quaterniond q = rvec2quat( getRvecFromT(pose.second) );
+            Eigen::Quaterniond q = rvec2quat( getRvecFromT(pose_i.second) );
             Eigen::Vector4d v = quat2vec(q);
             quats.push_back(v);
         }
@@ -270,6 +271,20 @@ fiducialPose fiducialPoseDetector::getCleanModelPose(Mat frame, string modelName
             inlier_avg_tvec
             );
         pose.n_fiducials = ids.size();
+
+        // // DEBUG
+        // for (int i=0 ; i<raw_rvecs.size() ; i++) {
+        //     aruco::drawAxis(
+        //         frame, 
+        //         intrinsics,
+        //         distortion,
+        //         raw_rvecs[i],
+        //         raw_tvecs[i],
+        //         0.03
+        //         );
+        //     }
+        // aruco::drawDetectedMarkers(frame, corners, ids);
+
         return pose;
         // return make_pair(ids.size(), T_cm);
     }

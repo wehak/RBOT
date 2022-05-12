@@ -92,7 +92,7 @@ cv::Mat drawResultOverlay(const vector<Object3D*>& objects, const cv::Mat& frame
     RenderingEngine::Instance()->setLevel(0);
     
     vector<Point3f> colors;
-    colors.push_back(Point3f(1.0, 0.5, 0.0));
+    colors.push_back(Point3f(1.0, 0.0, 1.0));
     //colors.push_back(Point3f(0.2, 0.3, 1.0));
     RenderingEngine::Instance()->renderShaded(vector<Model*>(objects.begin(), objects.end()), GL_FILL, colors, true);
     
@@ -162,8 +162,9 @@ int main(int argc, char *argv[])
     configFile >> j;
 
     // read each parameter
-    const string outputFrames = j["outputFrames"];
+    const string sessionName = j["sessionName"];
     const string selectedModel = j["selectedModel"];
+    const string outputFolder = j["outputFolder"];
     const string inputVideoPath = j["inputVideoPath"];
 
     const string PosterMeasurementsFilepath = j["PosterMeasurementsFilepath"];
@@ -213,8 +214,11 @@ int main(int argc, char *argv[])
     vector<std::chrono::duration<double>> t_iteration;
 
     // camera image size
-    int width = 1920;
-    int height = 1080;
+    // int width = 1920;
+    // int height = 1080;
+    int width = 1280;
+    int height = 720;
+    
     
     // near and far plane of the OpenGL view frustum
     float zNear = 10.0;
@@ -271,10 +275,12 @@ int main(int argc, char *argv[])
     vector< vector<string> > measurements;
 
     // create output data folder
-    create_directory("./data");
-    create_directory("./data/" + outputFrames);
-    create_directory("./data/" + outputFrames + "/mask");
-    create_directory("./data/" + outputFrames + "/img");
+    create_directory(outputFolder);
+    create_directory(outputFolder + "/" + sessionName);
+    create_directory(outputFolder + "/" + sessionName + "/" + selectedModel);
+    create_directory(outputFolder + "/" + sessionName + "/" + selectedModel + "/mask");
+    create_directory(outputFolder + "/" + sessionName + "/" + selectedModel + "/img");
+    // create_directory(outputFolder + "/" + sessionName + "/result"); // DELETE
 
     // per frame loop
     int frame_n = 0;
@@ -290,12 +296,12 @@ int main(int argc, char *argv[])
             cout << "Error: Blank frame grabbed\n";
             break;
         }
-        
-        // get model pose from fiducial
-        fiducialPose pose = fiducial_detector.getCleanModelPose(frame, selectedModel, TVEC_COEF, MIN_FIDUCIALS);
 
         // get model poses from RBOT
         poseEstimator->estimatePoses(frame, undistortFrame, true);
+        
+        // get model pose from fiducial
+        fiducialPose pose = fiducial_detector.getCleanModelPose(frame, selectedModel, TVEC_COEF, MIN_FIDUCIALS);
 
 
         // DEBUG
@@ -313,25 +319,7 @@ int main(int argc, char *argv[])
         for (int i=0 ; i<3 ; i++) T_rbot(i, 3) = T_rbot(i, 3) / float(1000);
 
         // DEBUG
-        // cout << printMatrixSingleLine(T_rbot) << endl;  
-
-        // check if poses correspond
-        if (posesCorrespond(
-                // objects[0]->getPose() / float(1000), // RBOT pose, normalized to meters
-                T_rbot, // RBOT pose
-                pose.T, // fiducial pose
-                limit // correspondence limits
-                )
-            ) {
-            missed_frames = 0;
-            imwrite("./data/" + outputFrames + "/mask/" + to_string(frame_n) + ".png", mask);
-            imwrite("./data/" + outputFrames + "/img/" + to_string(frame_n) + ".png", result);
-        }
-
-        // if not
-        else {
-            missed_frames++;
-        }
+        // cout << printMatrixSingleLine(T_rbot) << endl; 
 
         // draw fiducial pose ontop of the input image
         if (pose.n_fiducials >= MIN_FIDUCIALS) {
@@ -343,10 +331,31 @@ int main(int argc, char *argv[])
                 getTvecFromT(pose.T),
                 0.10
                 );
+            
+            // imwrite(outputFolder + "/" + sessionName + "/result/" + to_string(frame_n) + ".png", result); // DELETE 
+
+            // check if poses correspond
+            if (posesCorrespond(
+                    // objects[0]->getPose() / float(1000), // RBOT pose, normalized to meters
+                    T_rbot, // RBOT pose
+                    pose.T, // fiducial pose
+                    limit // correspondence limits
+                    )
+                ) {
+                missed_frames = 0;
+                imwrite(outputFolder + "/" + sessionName + "/" + selectedModel + "/mask/" + to_string(frame_n) + ".png", mask);
+                imwrite(outputFolder + "/" + sessionName + "/" + selectedModel + "/img/" + to_string(frame_n) + ".png", frame);
+            }
+
+            // if not
+            else {
+                missed_frames++;
+            }
 
             // reset RBOT is if there are successive correspondence failures
             if (missed_frames >= reInitializePoseLimit) {
-                cout << "No correspondance for " + to_string(missed_frames) + " frames. Attempting to reset RBOT." << endl;
+                missed_frames = 0;
+                cout << "#" + to_string(frame_n) + ": No correspondance for " + to_string(missed_frames) + " frames. Attempting to reset RBOT." << endl;
 
                 poseEstimator->setModelInitialPose(0, pose.T);
                 poseEstimator->reset();
@@ -362,7 +371,7 @@ int main(int argc, char *argv[])
 
         if(showHelp)
         {
-            putText(result, "Press '1' to initialize", Point(width / 3, height / 2 - 20), FONT_HERSHEY_DUPLEX, 1.0, Scalar(255, 0, 255), 1);
+            putText(result, "Press 's' to start, 'p' to pause", Point(width / 3, height / 2 - 20), FONT_HERSHEY_DUPLEX, 1.0, Scalar(255, 0, 255), 1);
             putText(result, "or 'c' to quit", Point(width / 3, height / 2 + 20), FONT_HERSHEY_DUPLEX, 1.0, Scalar(255, 0, 255), 1);
         }
 
@@ -386,7 +395,7 @@ int main(int argc, char *argv[])
         int key = waitKey(timeout);
         
         // start/stop tracking the first object
-        if(key == (int)'1') {
+        if(key == (int)'s') {
             poseEstimator->setModelInitialPose(0, pose.T);
             poseEstimator->reset();
 
@@ -394,25 +403,25 @@ int main(int argc, char *argv[])
             poseEstimator->estimatePoses(frame, undistortFrame, false);
 
             timeout = 1;
-            showHelp = !showHelp;
+            showHelp = false;
         }
-        if(key == (int)'2') // the same for a second object
-        {
-            //poseEstimator->toggleTracking(frame, 1, undistortFrame);
-            //poseEstimator->estimatePoses(frame, false, undistortFrame);
-        }
+        // if(key == (int)'2') // the same for a second object
+        // {
+        //     //poseEstimator->toggleTracking(frame, 1, undistortFrame);
+        //     //poseEstimator->estimatePoses(frame, false, undistortFrame);
+        // }
 
-        // reset the system to the initial state
-        if(key == (int)'r') poseEstimator->reset();
-        // stop the demo
+        // // reset the system to the initial state
+        // if(key == (int)'r') poseEstimator->reset();
+        // // stop the demo
         if(key == (int)'c') break;
-        // set pose from fiducal pose detector
-        if(key == (int)'f') {
-            poseEstimator->setModelPose(0, pose.T);
-            // poseEstimator->reset();
-            // timeout = 0;
-        }
-        // pause
+        // // set pose from fiducal pose detector
+        // if(key == (int)'f') {
+        //     poseEstimator->setModelPose(0, pose.T);
+        //     // poseEstimator->reset();
+        //     // timeout = 0;
+        // }
+        // // pause
         if(key == (int)'p') timeout = 0;
 
         // recording
@@ -439,7 +448,7 @@ int main(int argc, char *argv[])
 
     // write measurements data to file
     ofstream log;
-    string output_filename = "./data/" + outputFrames + "/measurement_log_" + getFilename(inputVideoPath) + "_" + selectedModel + ".txt";
+    string output_filename = outputFolder + "/" + sessionName + "/" + selectedModel + "/measurement_log_" + getFilename(inputVideoPath) + "_" + selectedModel + ".txt";
     log.open(output_filename);
     if (log.is_open()) {
         for (auto& line : measurements) {
