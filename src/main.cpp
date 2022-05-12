@@ -354,8 +354,8 @@ int main(int argc, char *argv[])
 
             // reset RBOT is if there are successive correspondence failures
             if (missed_frames >= reInitializePoseLimit) {
-                missed_frames = 0;
                 cout << "#" + to_string(frame_n) + ": No correspondance for " + to_string(missed_frames) + " frames. Attempting to reset RBOT." << endl;
+                missed_frames = 0;
 
                 poseEstimator->setModelInitialPose(0, pose.T);
                 poseEstimator->reset();
