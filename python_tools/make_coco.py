@@ -18,13 +18,13 @@ from pycocotools import mask
 # check_image = True
 
 config = {
-    "input_files"       : Path("/media/wehak/Data/coco_master/test_2"), # input
-    "database_folder"   : Path("/media/wehak/Data/coco_master/trial_dataset_4/train"), # output
+    "input_files"       : Path("/media/wehak/Data/coco_master/dataset_test_1_1/raw"), # input
+    "database_folder"   : Path("/media/wehak/Data/coco_master/dataset_test_1_1/train"), # output
     # "object_category"   : "d-handle",
     "verify_image"      : True,
     "show_image"        : True,
     "bool_array"        : True,
-    "view_time"         : False, # False or ms
+    "view_time"         : 1, # False or ms
 }
 
 def make_coco(folder_path):
@@ -115,7 +115,7 @@ def make_coco(folder_path):
     #
 
     # DEBUG
-    # images = images[:10]
+    images = images[:10000]
     #
 
     # read all images in path
@@ -135,7 +135,7 @@ def make_coco(folder_path):
 
         # verify if mask is visible
         if not mask_img.any(): 
-            print("No mask:", mask_path.stem, end="\r")
+            print("No mask:", mask_path.stem)
             remove_img()
             n_removed += 1
             continue
@@ -294,9 +294,9 @@ def make_coco(folder_path):
         },
         "licenses": [
             {
-            "url": "http://creativecommons.org/licenses/by-nc-sa/2.0/",
+            "url": "https://opensource.org/licenses/GPL-3.0",
             "id": 1,
-            "name": "Attribution-NonCommercial-ShareAlike License"
+            "name": "GNU General Public License version 3"
             },
         ],
         "categories": all_categories,
