@@ -1,8 +1,8 @@
 {
-    "sessionName" : "test_2",
-    "selectedModel" : "t-handle",
+    "sessionName" : "dataset_test1_2",
+    "selectedModel" : "d-handle",
     "outputFolder" : "/media/wehak/Data/coco_master",
-    "inputVideoPath" : "/media/wehak/OS/Users/hweyd/Documents/My Videos/oceanlab_video/dataset/test_1_1_720.mp4",
+    "inputVideoPath" : "/media/wehak/OS/Users/hweyd/Documents/My Videos/oceanlab_video/dataset/test_1_2_720.mp4",
 
     "PosterMeasurementsFilepath" : "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_tag_positions.json",
     "modelPositionFilepath" : "/home/wehak/Dropbox/ACIT master/data/poster_json/poster_model_positions.json",
