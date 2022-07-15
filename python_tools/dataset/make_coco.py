@@ -15,13 +15,11 @@ from pycocotools import mask
 
 
 config = {
-    "input_files"       : Path("/media/wehak/WD Passport/dataset_test_1_1/raw"), # input
-    "database_folder"   : Path("/media/wehak/WD Passport/dataset_test_1_1/total"), # output
-    # "object_category"   : "d-handle",
-    "verify_image"      : False,
-    # "show_image"        : False,
+    "input_files"       : Path("/media/wehak/WD Passport/dataset_test_2_1/raw"), # input
+    "database_folder"   : Path("/media/wehak/WD Passport/dataset_test_2_1/total"), # output
+    "verify_image"      : True,
     "bool_array"        : True,
-    "view_time"         : False, # False or ms
+    "view_time"         : 1, # False or ms
 }
 
 # read the pose log
@@ -38,7 +36,7 @@ def log_reader(folderpath):
         t_rbot = []
         for i, row in enumerate(list(csv_data)):
             t_rbot.append(      np.array( row[T_RBOT][1:-1].replace(",",".").split(" "), dtype=np.float64 ).reshape([4, 4]))
-
+    print(len(t_rbot))
     return t_rbot
 
 # makes the annotations for a folder of data
@@ -64,9 +62,7 @@ def make_coco(folder_path):
     # read pose log
     poses = log_reader(folder_path)
 
-    # last_img_id = 0
     min_cat_id = 1000 # start at high value as to not conflic with coco default categories
-    # min_img_id = 1000
 
     # delete image function
     def remove_img():
@@ -81,10 +77,7 @@ def make_coco(folder_path):
             new_list.append(float(row[0][1]))
         return new_list
 
-        # return [[row[0][0], row[0][1]] for row in contour]
-
     """ read existing database """
-
     # if there is an existing labels file
     if Path(f"{config['database_folder']}/labels.json").is_file():
 
@@ -206,23 +199,10 @@ def make_coco(folder_path):
         gt_area = mask.area(encoded_obj)
         gt_bb = mask.toBbox(encoded_obj)
 
-        # print(encoded_obj.keys())
-
-        # print(gt_area.tolist(), areas[max_index])
-        # print(gt_bb.tolist(), [x, y, w, h])
-        # cv.imshow("test", siluette_mask)
-        # cv.waitKey()
-        polygons = Mask(siluette_mask).polygons()
-        # # print(polygons.points)
-        # # print(polygons.segmentation)
-        # print([x, y, x+w, y+h])
-        # print(polygons.bbox)
-
 
         print(f"Image {i+1}/{n_images}", end="\r")
 
         # draw contour
-        # if config['show_image']:
         if config["view_time"]:
 
             cv.drawContours(img, [contours[max_index]], -1, color[0], 2)
@@ -231,7 +211,7 @@ def make_coco(folder_path):
             cv.imshow("name", img)
             cv.waitKey(config["view_time"])
 
-        # write annotationc
+        # write annotations as a RTE bool array
         if config["bool_array"]:
             new_annotations.append({
                     "segmentation": {
@@ -248,8 +228,9 @@ def make_coco(folder_path):
                     "bbox": [x, y, w, h],
                     "category_id": cat_id,
                     "id": last_annot_id + i,
-                    "T" : poses[int(mask_path.stem)].to_list()
+                    "T" : poses[int(mask_path.stem)].tolist()
             })
+        # or as a list of polygon edges
         else:
             new_annotations.append({
                     "segmentation": [unpack_c(contours[max_index])],
@@ -260,7 +241,7 @@ def make_coco(folder_path):
                     "bbox": [x, y, w, h],
                     "category_id": cat_id,
                     "id": last_annot_id + i,
-                    "T" : poses[int(mask_path.stem)].to_list()
+                    "T" : poses[int(mask_path.stem)].tolist()
             })
 
         if int(mask_path.stem) not in prev_img_ids:
@@ -274,9 +255,9 @@ def make_coco(folder_path):
             })
 
             #copy image
-            # copy_path = Path(f"{img_folder}/{img_path.name}")
-            # if not copy_path.is_file():
-            #     copyfile(img_path, copy_path)
+            copy_path = Path(f"{img_folder}/{img_path.name}")
+            if not copy_path.is_file():
+                copyfile(img_path, copy_path)
 
 
         
@@ -291,11 +272,6 @@ def make_coco(folder_path):
     all_categories = prev_categories + new_categories
     all_images = prev_images + new_images
     all_annotations = prev_annotations + new_annotations
-
-    # print(all_annotations)
-    # print(all_categories)
-    # print(all_images)
-
 
     # write labels.json file
     labels = {

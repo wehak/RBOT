@@ -69,7 +69,7 @@ for i, path in enumerate(config["database_folders"], 1):
 
         
         for j, annot in enumerate(prev_annotations):
-            new_annot = annot
+            new_annot = annot.copy()
             new_annot["id"] = int((i * 10**3) + j)
             new_annot["image_id"] = old_new[int(annot["image_id"])]
             new_annots.append(new_annot)

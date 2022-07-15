@@ -67,6 +67,8 @@ def log_reader(data_file):
         else:
             return row.tvec_diff
 
+    df["frame_n"] = df.index
+
     df["euler_fiducial"] = df.apply(lambda row: t_to_euler(row.t_fiducial), axis=1)
     df["tvec_fiducial"] = df.apply(lambda row: t_to_tvec(row.t_fiducial), axis=1)
 
@@ -88,7 +90,7 @@ def log_reader(data_file):
 
 
 
-data = Path("/media/wehak/Data/coco_master/dataset_test_1_1")
+data = Path("/media/wehak/WD Passport/dataset_test_2_1/raw")
 
 if not Path(f"{data}/data.pkl").is_file():
     first = True
@@ -106,6 +108,8 @@ if not Path(f"{data}/data.pkl").is_file():
     df.to_pickle(Path(f"{data}/data.pkl"))
 else:
     df = pd.read_pickle(Path(f"{data}/data.pkl"))
+
+print(pd.isna(df["tvec_diff_x"]).sum())
 
     # fig, axs = plt.subplots(2, 1)
     # fig.set_size_inches(18/2.54, 10/2.54)
